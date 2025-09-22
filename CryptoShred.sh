@@ -51,9 +51,26 @@ sudo umount /dev/${DEV}? 2>/dev/null
 sudo umount -l /dev/$DEV* 2>/dev/null
 sudo wipefs -a /dev/$DEV
 
-# (Optional) Full overwrite with random data – slow!
+# (Optional) Full overwrite with random data
+# If you want to ensure no data remnants remain, uncomment this section.
+# Note: This can take hours on large drives.
+# If you want to skip this, the quick header/edge wipe (next section below) is usually sufficient.
 # echo "Overwriting /dev/$DEV with random data. This may take a long time..."
 # sudo dd if=/dev/urandom of=/dev/$DEV bs=10M status=progress
+
+# Quick wipe of headers and edges before encryption
+# This helps prevent recovery of any plaintext remnants, 
+# prevents discovery of old partitions, and ensures no old signatures 
+# interfere with encryption setup (e.g., old RAID, LVM, filesystem signatures)
+echo "Wiping old signatures and headers on /dev/$DEV..."
+sudo wipefs -a /dev/$DEV
+
+echo "Overwriting first 100MB..."
+sudo dd if=/dev/urandom of=/dev/$DEV bs=1M count=100 status=progress
+
+echo "Overwriting last 100MB..."
+sudo dd if=/dev/urandom of=/dev/$DEV bs=1M count=100 \
+  seek=$(( $(blockdev --getsz /dev/$DEV) / 2048 - 100 )) status=progress
 
 # Try Opal first
 if cryptsetup luksFormat --hw-opal-only --test-passphrase /dev/$DEV 2>/dev/null; then
@@ -80,6 +97,3 @@ else # Fallback to LUKS2
 fi
 
 # The entire drive’s contents are now cryptographically irretrievable.
-# If you want extra paranoia (e.g. prevent forensic recovery of plaintext remnants),
-# you can still do a quick wipe of headers + some random data at the start/end
-# with wipefs -a and dd if=/dev/urandom of=/dev/$DEV bs=1M count=100 before luksFormat.
