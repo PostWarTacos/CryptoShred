@@ -62,27 +62,30 @@ sudo wipefs -a /dev/$DEV
 # This helps prevent recovery of any plaintext remnants, 
 # prevents discovery of old partitions, and ensures no old signatures 
 # interfere with encryption setup (e.g., old RAID, LVM, filesystem signatures)
+
+echo
 echo "Wiping old signatures and headers on /dev/$DEV..."
-sudo wipefs -a /dev/$DEV
 
 echo "Overwriting first 100MB..."
-sudo dd if=/dev/urandom of=/dev/$DEV bs=1M count=100 status=progress
+sudo dd if=/dev/urandom of=/dev/$DEV bs=1M count=100 status=none 2>/dev/null
 
 echo "Overwriting last 100MB..."
 sudo dd if=/dev/urandom of=/dev/$DEV bs=1M count=100 \
-  seek=$(( $(blockdev --getsz /dev/$DEV) / 2048 - 100 )) status=progress
+  seek=$(( $(blockdev --getsz /dev/$DEV) / 2048 - 100 )) status=none 2>/dev/null
+echo "Wipe first and last 100MB complete."
 
 # Try Opal first
+echo
+echo  "Checking for Opal hardware encryption support..."
 if cryptsetup luksFormat --hw-opal-only --test-passphrase /dev/$DEV 2>/dev/null; then
-    echo
     echo "Opal-compatible drive detected. Using hardware encryption..."
     sudo cryptsetup luksFormat /dev/$DEV --hw-opal-only --batch-mode
     echo "Opal encryption enabled on /dev/$DEV."
     echo "No filesystem created, drive encrypts transparently."
 else # Fallback to LUKS2
   # Use it to format the drive (batch mode avoids the YES prompt, already have YES prompt above)
-  echo
   echo "Opal not supported. Falling back to software LUKS2 (AES-XTS)."
+ 
   # Generate a 32-character random passphrase
   PASSPHRASE=$(openssl rand -base64 32)
 
@@ -94,6 +97,7 @@ else # Fallback to LUKS2
   echo
   echo "Drive /dev/$DEV has been encrypted with a random one-time passphrase."
   echo "Data is permanently inaccessible."
+  echo
 fi
 
 # The entire drive’s contents are now cryptographically irretrievable.
