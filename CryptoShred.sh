@@ -65,10 +65,8 @@ sudo wipefs -a /dev/$DEV
 
 echo
 echo "Wiping old signatures and headers on /dev/$DEV..."
-
 echo "Overwriting first 100MB..."
 sudo dd if=/dev/urandom of=/dev/$DEV bs=1M count=100 status=none 2>/dev/null
-
 echo "Overwriting last 100MB..."
 sudo dd if=/dev/urandom of=/dev/$DEV bs=1M count=100 \
   seek=$(( $(blockdev --getsz /dev/$DEV) / 2048 - 100 )) status=none 2>/dev/null
