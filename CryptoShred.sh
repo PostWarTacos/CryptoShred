@@ -13,9 +13,9 @@ echo "==========================================================================
 echo
 # List local drives (excluding loop, CD-ROM, and removable devices)
 echo "Available local drives:"
-lsblk -d -o NAME,SIZE,MODEL,TYPE | grep -E 'disk'
+lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi 'USB'
 echo
-read -p "Enter the device to encrypt (e.g., sda, nvme0n1): " DEV
+read -p "Enter the device to encrypt (e.g., sdb, nvme0n1): " DEV
 
 # Confirm device exists and is a local disk
 if ! lsblk -d -o NAME,TYPE | grep -E "^$DEV\s+disk" > /dev/null; then
@@ -25,7 +25,7 @@ if ! lsblk -d -o NAME,TYPE | grep -E "^$DEV\s+disk" > /dev/null; then
 fi
 
 # Prevent wiping the boot device
-BOOTDEV=$(lsblk -no pkname $(df / | tail -1 | awk '{print $1}'))
+BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
 if [[ "$DEV" == "$BOOTDEV" ]]; then
   echo
   echo "ERROR: /dev/$DEV appears to be the boot device. Aborting."
