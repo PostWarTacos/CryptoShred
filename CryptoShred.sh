@@ -32,6 +32,9 @@ if [[ "$DEV" == "$BOOTDEV" ]]; then
   exit 1
 fi
 
+# Disable all swap (important before wiping)
+sudo swapoff -a
+
 echo
 echo "========"
 echo "WARNING: This will irreversibly destroy ALL data on /dev/$DEV!"
@@ -84,13 +87,25 @@ else # Fallback to LUKS2
   # Use it to format the drive (batch mode avoids the YES prompt, already have YES prompt above)
   echo "Opal not supported. Falling back to software LUKS2 (AES-XTS)."
  
+  # Create a strong random key and pipe it straight into cryptsetup (no file)
+  # Adjust pbkdf/argon2 parameters to taste for speed vs cost.
+  head -c 64 /dev/urandom | \
+    sudo cryptsetup luksFormat /dev/$DEV \
+      --type luks2 \
+      --pbkdf argon2id \
+      --pbkdf-memory 131072 \
+      --pbkdf-parallel 4 \
+      --iter-time 2000 \
+      --cipher aes-xts-plain64 --key-size 512 \
+      --key-file -
+  
   # Generate a 32-character random passphrase
-  PASSPHRASE=$(openssl rand -base64 32)
+  # PASSPHRASE=$(openssl rand -base64 32)
 
-  echo "$PASSPHRASE" | sudo cryptsetup luksFormat /dev/$DEV \
-    --type luks2 \
-    --cipher aes-xts-plain64 --key-size 512 \
-    --batch-mode --key-file=-
+  # echo "$PASSPHRASE" | sudo cryptsetup luksFormat /dev/$DEV \
+  #   --type luks2 \
+  #   --cipher aes-xts-plain64 --key-size 512 \
+  #   --batch-mode --key-file=-
 
   echo
   echo "Drive /dev/$DEV has been encrypted with a random one-time passphrase."
