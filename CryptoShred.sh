@@ -4,7 +4,7 @@ clear
 echo "==========================================================================================="
 echo
 echo "CryptoShred - Securely encrypt and destroy key"
-echo "Version 1.0 - 2024-06-10"  
+echo "Version 1.0 - 2025-09-24"  
 echo "This script will encrypt an entire local drive with a random key, making all data"
 echo "on it permanently inaccessible. It supports both Opal hardware encryption (if"
 echo "available) and software LUKS2 encryption as a fallback."
@@ -93,19 +93,15 @@ else # Fallback to LUKS2
     sudo cryptsetup luksFormat /dev/$DEV \
       --type luks2 \
       --pbkdf argon2id \
-      --pbkdf-memory 131072 \
+      --pbkdf-memory 4194304 \
       --pbkdf-parallel 4 \
-      --iter-time 2000 \
+      --iter-time 5000 \
       --cipher aes-xts-plain64 --key-size 512 \
       --key-file -
   
-  # Generate a 32-character random passphrase
-  # PASSPHRASE=$(openssl rand -base64 32)
-
-  # echo "$PASSPHRASE" | sudo cryptsetup luksFormat /dev/$DEV \
-  #   --type luks2 \
-  #   --cipher aes-xts-plain64 --key-size 512 \
-  #   --batch-mode --key-file=-
+  # pbkdf-memory - 4GB memory (in KiB): how much RAM is used per guess in brute-force attack
+  # iter-time - 5 seconds (in ms): The minimum time required to spend on each password guess
+  # Together these make brute-force attacks much more costly and slow.
 
   echo
   echo "Drive /dev/$DEV has been encrypted with a random one-time passphrase."
