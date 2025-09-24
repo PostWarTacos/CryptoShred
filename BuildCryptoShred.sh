@@ -112,12 +112,24 @@ umount -lf edit/run || true
 umount -lf edit/proc || true
 umount -lf edit/sys || true
 
-# === 5. Rebuild squashfs ===
+
+# === 5. Modify GRUB config to force first option ===
+echo
+echo "[*] Modifying GRUB config..."
+GRUB_CFG="iso/boot/grub/grub.cfg"
+if [ -f "$GRUB_CFG" ]; then
+  sed -i '1i set default=0\nset timeout=0' "$GRUB_CFG"
+else
+  echo "[!] GRUB config not found at $GRUB_CFG"
+  exit 1
+fi
+
+# === 6. Rebuild squashfs ===
 echo
 echo "[*] Rebuilding squashfs..."
 mksquashfs edit iso/live/filesystem.squashfs -noappend -e boot
 
-# === 6. Rebuild ISO ===
+# === 7. Rebuild ISO ===
 echo
 echo "[*] Building ISO..."
 xorriso -as mkisofs -o "$OUTISO" \
@@ -131,7 +143,7 @@ xorriso -as mkisofs -o "$OUTISO" \
   -e boot/grub/efi.img -no-emul-boot -isohybrid-gpt-basdat \
   iso
 
-# === 7. Write ISO to USB ===
+# === 8. Write ISO to USB ===
 echo
 echo "[*] Writing ISO to USB ($USBDEV)..."
 dd if="$OUTISO" of="$USBDEV" bs=4M status=progress oflag=direct conv=fsync
