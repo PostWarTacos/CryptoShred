@@ -2,6 +2,28 @@
 set -euo pipefail
 clear
 
+echo "==========================================================================================="
+echo
+echo "BuildCryptoShred - Build bootable USB with CryptoShred"
+echo "Version 1.1 - 2025-10-01"
+echo
+echo "This script will create a bootable USB drive with Debian (latest version will be downloaded) and CryptoShred.sh pre-installed."
+echo "When booted, CryptoShred.sh will run automatically to securely encrypt and destroy"
+echo "the key of the selected drive."
+echo
+echo "==========================================================================================="
+
+# === User verification step ===
+echo
+echo "==========================================================================================="
+echo
+echo "Please ensure you have downloaded the latest version of CryptoShred.sh and saved it to: $HOME/live-iso-work/CryptoShred.sh"
+echo "Also, make sure your target USB device (device to receive Debian/CryptoShred.iso) is plugged in."
+echo
+echo "==========================================================================================="
+echo
+read -p "Press Enter to continue..."
+
 # === Config ===
 WORKDIR="$HOME/live-iso-work"
 OUTISO="CryptoShred.iso"
