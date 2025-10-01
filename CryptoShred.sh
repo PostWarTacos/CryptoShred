@@ -11,26 +11,37 @@ echo "available) and software LUKS2 encryption as a fallback."
 echo
 echo "==========================================================================================="
 echo
+
 # List local drives (excluding loop, CD-ROM, and removable devices)
 echo "Available local drives:"
 lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi 'USB'
 echo
-read -p "Enter the device to encrypt (e.g., sdb, nvme0n1): " DEV
-
-# Confirm device exists and is a local disk
-if ! lsblk -d -o NAME,TYPE | grep -E "^$DEV\s+disk" > /dev/null; then
+# Identify the boot device to prevent accidental selection
+BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
+while true; do
+  # Prompt for device to encrypt
+  read -p "Enter the device to encrypt (e.g., sdb, nvme0n1): " DEV
+  # Check if entered device is in the lsblk output and is a disk
+  if lsblk -d -o NAME,TYPE | grep -E "^$DEV\s+disk" > /dev/null; then
+    # Prevent wiping the boot device
+    if [[ "$DEV" == "$BOOTDEV" ]]; then
+      echo
+      echo "ERROR: /dev/$DEV appears to be the boot device. Please choose another device."
+      continue
+    fi
+    break
+  fi
   echo
-  echo "Device /dev/$DEV is not a valid local disk."
-  exit 1
-fi
+  echo "Device /dev/$DEV is not a valid local disk from the list above. Please try again."
+done
 
 # Prevent wiping the boot device
-BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
-if [[ "$DEV" == "$BOOTDEV" ]]; then
-  echo
-  echo "ERROR: /dev/$DEV appears to be the boot device. Aborting."
-  exit 1
-fi
+#BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
+#if [[ "$DEV" == "$BOOTDEV" ]]; then
+#  echo
+#  echo "ERROR: /dev/$DEV appears to be the boot device. Aborting."
+#  exit 1
+#fi
 
 # Disable all swap (important before wiping)
 sudo swapoff -a
@@ -41,12 +52,21 @@ echo "WARNING: This will irreversibly destroy ALL data on /dev/$DEV!"
 echo "========"
 echo
 
-read -p "Type 'yes' in capital letters to continue: " CONFIRM
-if [[ "$CONFIRM" != "YES" ]]; then
-  echo
-  echo "Aborted."
-  exit 1
-fi
+# Confirm action
+while true; do
+  read -p "Type 'YES' in capital letters to continue: " CONFIRM
+  # Check for exact match
+  if [[ "$CONFIRM" == "YES" ]]; then
+    break
+  # elif [[ "$CONFIRM" == "yes" || "$CONFIRM" == "y" ]]; then continue
+  elif [[ "${CONFIRM,,}" == "y" || "${CONFIRM,,}" == "yes" ]]; then
+    continue
+  else
+    echo
+    echo "Aborted."
+    exit 1
+  fi
+done
 
 # Ensure the drive is not mounted or in use
 echo "Cleaning up any mounts on /dev/$DEV..."
