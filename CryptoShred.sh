@@ -4,7 +4,7 @@ clear
 echo "==========================================================================================="
 echo
 echo "CryptoShred - Securely encrypt and destroy key"
-echo "Version 1.0 - 2025-09-24"  
+echo "Version 1.2 - 2025-10-01"  
 echo "This script will encrypt an entire local drive with a random key, making all data"
 echo "on it permanently inaccessible. It supports both Opal hardware encryption (if"
 echo "available) and software LUKS2 encryption as a fallback."
@@ -27,12 +27,16 @@ while true; do
     if [[ "$DEV" == "$BOOTDEV" ]]; then
       echo
       echo "ERROR: /dev/$DEV appears to be the boot device. Please choose another device."
+      read -p "Press Enter to continue..."
+      clear
       continue
     fi
     break
   fi
   echo
   echo "Device /dev/$DEV is not a valid local disk from the list above. Please try again."
+  read -p "Press Enter to continue..."
+  clear
 done
 
 # Prevent wiping the boot device
@@ -43,7 +47,10 @@ done
 #  exit 1
 #fi
 
-# Disable all swap (important before wiping)
+# Disable all swap
+# This is important before wiping a drive to prevent any swap partitions from being in use
+# and to ensure no data remnants remain in swap
+# NEEDS to be done immediately after device selection
 sudo swapoff -a
 
 echo
@@ -60,10 +67,14 @@ while true; do
     break
   # elif [[ "$CONFIRM" == "yes" || "$CONFIRM" == "y" ]]; then continue
   elif [[ "${CONFIRM,,}" == "y" || "${CONFIRM,,}" == "yes" ]]; then
+    read -p "Press Enter to continue..."
+    clear
     continue
   else
     echo
     echo "Aborted."
+    read -p "Press Enter to continue..."
+    clear
     exit 1
   fi
 done
@@ -126,7 +137,13 @@ else # Fallback to LUKS2
   echo
   echo "Drive /dev/$DEV has been encrypted with a random one-time passphrase."
   echo "Data is permanently inaccessible."
+  echo "No filesystem created, drive encrypts transparently."
   echo
+  read -p "Press Enter to continue..."
+  clear
+  # Will return 0 and continue to the end of the script
+  # Which will restart the script to allow another device to be selected
+  exit 0
 fi
 
 # The entire drive’s contents are now cryptographically irretrievable.
