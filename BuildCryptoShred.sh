@@ -7,9 +7,9 @@ echo
 echo "BuildCryptoShred - Build bootable USB with CryptoShred"
 echo "Version 1.1 - 2025-10-01"
 echo
-echo "This script will create a bootable USB drive with Debian (latest version will be downloaded) and CryptoShred.sh pre-installed."
-echo "When booted, CryptoShred.sh will run automatically to securely encrypt and destroy"
-echo "the key of the selected drive."
+echo "This script will create a bootable USB drive with Debian Live (latest version will be downloaded)"
+echo "and CryptoShred.sh pre-installed. When booted, CryptoShred.sh will run automatically"
+echo "to securely encrypt and destroy the key of the selected drive."
 echo
 echo "==========================================================================================="
 
