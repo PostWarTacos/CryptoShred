@@ -7,6 +7,15 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+echo "========================================= CryptoShred ISO Builder =========================================================="
+echo
+echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
+echo "The resulting ISO will be written directly to the specified USB device."
+echo "Make sure to change the USB device and script are in place before proceeding."
+echo "WARNING: This will ERASE ALL DATA on the specified USB device."
+echo
+echo "============================================================================================================================"
+
 # === Config ===
 WORKDIR="$HOME/live-iso-work"
 OUTISO="CryptoShred.iso"
@@ -19,6 +28,27 @@ echo "[*] Cleaning old build dirs..."
 rm -rf "$WORKDIR"
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
+
+# === User verification step ===
+while true; do
+  echo
+  echo "============================================================================================================================"
+  echo
+  echo "Please ensure you have downloaded the latest version of CryptoShred.sh and placed it in $HOME/live-iso-work/CryptoShred.sh"
+  echo "Also, make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in."
+  echo
+  echo "============================================================================================================================"
+  echo
+  if [ ! -f "$CRYPTOSHRED_SCRIPT" ]; then
+    echo "[!] CryptoShred.sh not found at $CRYPTOSHRED_SCRIPT."
+    echo "    Please download and place it there before continuing."
+    read -p "Press Enter to retry..."
+    clear
+    continue
+  fi
+  read -p "Press Enter to continue..."
+  break
+done
 
 # === Verify required tools are installed on local host ===
 for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
