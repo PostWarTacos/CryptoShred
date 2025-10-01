@@ -40,6 +40,8 @@ if [ -d "$WORKDIR" ]; then
 fi
 mkdir -p "$WORKDIR/edit"
 mkdir -p "$WORKDIR/iso"
+chown "$SUDO_USER":"$SUDO_USER" "$WORKDIR"
+chmod 700 "$WORKDIR"
 cd "$WORKDIR"
 echo
 
