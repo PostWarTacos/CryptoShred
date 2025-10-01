@@ -18,9 +18,16 @@ echo "Make sure to change the USB device and script are in place before proceedi
 echo "WARNING: This will ERASE ALL DATA on the specified USB device."
 echo
 echo "============================================================================================================================"
+echo
 
 # === Config ===
-WORKDIR="$HOME/live-iso-work"
+# Get the real user's home directory (not root's when using sudo)
+if [ -n "${SUDO_USER:-}" ]; then
+  REAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+  REAL_HOME="$HOME"
+fi
+WORKDIR="$REAL_HOME/live-iso-work"
 OUTISO="CryptoShred.iso"
 USBDEV="/dev/sda"   # CHANGE THIS to your USB device
 CRYPTOSHRED_SCRIPT="$WORKDIR/CryptoShred.sh"
@@ -28,16 +35,20 @@ CRYPTOSHRED_SCRIPT="$WORKDIR/CryptoShred.sh"
 # === Preparation ===
 echo
 echo "[*] Cleaning old build dirs..."
-rm -rf "$WORKDIR"
-mkdir -p "$WORKDIR"
+if [ -d "$WORKDIR" ]; then
+  rm -rf "$WORKDIR"
+fi
+mkdir -p "$WORKDIR/edit"
+mkdir -p "$WORKDIR/iso"
 cd "$WORKDIR"
+echo
 
 # === User verification step ===
 while true; do
   echo
   echo "============================================================================================================================"
   echo
-  echo "Please ensure you have downloaded the latest version of CryptoShred.sh and placed it in $HOME/live-iso-work/CryptoShred.sh"
+  echo "Please ensure you have downloaded the latest version of CryptoShred.sh and placed it in $REAL_HOME/live-iso-work/CryptoShred.sh"
   echo "Also, make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in."
   echo
   echo "============================================================================================================================"
