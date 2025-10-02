@@ -46,11 +46,11 @@ echo "The resulting ISO will be written directly to the specified USB device."
 echo "Make sure to change the USB device and script are in place before proceeding."
 echo "WARNING: This will ERASE ALL DATA on the specified USB device."
 echo
-echo "============================================================================================================================"
 
 # === User verification step ===
 echo
-echo "IMPORTANT: Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in."
+echo
+echo "IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in."
 echo
 echo "============================================================================================================================"
 echo
