@@ -66,15 +66,17 @@ OUTISO="CryptoShred.iso"
 #USBDEV="/dev/sda"
 CRYPTOSHRED_SCRIPT="$WORKDIR/CryptoShred.sh"
 
+# Identify the boot device to prevent accidental selection
+BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
+
 # List local drives (excluding loop, CD-ROM, and removable devices)
 echo
 echo "Select the target USB device to write the ISO to."
 echo "Make sure to choose the correct device as all data on it will be erased!"
-echo "Available local drives:"
-lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi 'USB'
 echo
-# Identify the boot device to prevent accidental selection
-BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
+echo "Available local drives:"
+lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
+echo
 while true; do
   # Prompt for device to write ISO to
   read -p "Enter the device to write ISO to (e.g., sdb, nvme0n1): " USBDEV
