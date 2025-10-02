@@ -7,10 +7,34 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# === Version check ===
+# Dynamically extract version from this script
+SCRIPT_VERSION=$(grep -m1 -oP 'Version\s+\K[0-9\. -]+' "$0")
+REMOTE_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/BuildCryptoShred.sh"
+
+# Download remote script to temp file and extract version
+echo "[*] Checking for latest BuildCryptoShred.sh version online..."
+REMOTE_SCRIPT="$(mktemp)"
+curl -s "$REMOTE_URL" -o "$REMOTE_SCRIPT"
+REMOTE_VERSION=$(grep -m1 -oP 'Version\s+\K[0-9\. -]+' "$REMOTE_SCRIPT")
+
+# Compare versions
+if [ "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]; then
+  echo
+  echo "[!] Local script version ($SCRIPT_VERSION) does not match latest online version ($REMOTE_VERSION)."
+  echo "    Updating local script with the latest version..."
+  cp "$REMOTE_SCRIPT" "$0"
+  echo "[+] Script updated. Please re-run BuildCryptoShred.sh."
+  rm "$REMOTE_SCRIPT"
+  exit 0
+fi
+rm "$REMOTE_SCRIPT"
+
+# === Main script ===
 echo "========================================= CryptoShred ISO Builder =========================================================="
 echo
 echo "CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed"
-echo "Version 1.2 - 2025-10-01"
+echo "Version 1.3 - 2025-10-02"
 echo
 echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
 echo "The resulting ISO will be written directly to the specified USB device."
@@ -19,6 +43,16 @@ echo "WARNING: This will ERASE ALL DATA on the specified USB device."
 echo
 echo "============================================================================================================================"
 echo
+
+# === User verification step ===
+echo
+echo "============================================================================================================================"
+echo
+echo "IMPORTANT: Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in."
+echo
+echo "============================================================================================================================"
+echo
+read -p "Press Enter to continue..."
 
 # === Config ===
 # Get the real user's home directory (not root's when using sudo)
@@ -29,10 +63,39 @@ else
 fi
 WORKDIR="$REAL_HOME/live-iso-work"
 OUTISO="CryptoShred.iso"
-USBDEV="/dev/sda"   # CHANGE THIS to your USB device
+#USBDEV="/dev/sda"
 CRYPTOSHRED_SCRIPT="$WORKDIR/CryptoShred.sh"
 
-# === Preparation ===
+# List local drives (excluding loop, CD-ROM, and removable devices)
+echo "Select the target USB device to write the ISO to."
+echo "Make sure to choose the correct device as all data on it will be erased!"
+echo "Available local drives:"
+lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi 'USB'
+echo
+# Identify the boot device to prevent accidental selection
+BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
+while true; do
+  # Prompt for device to write ISO to
+  read -p "Enter the device to write ISO to (e.g., sdb, nvme0n1): " USBDEV
+  # Check if entered device is in the lsblk output and is a disk
+  if lsblk -d -o NAME,TYPE | grep -E "^$USBDEV\s+disk" > /dev/null; then
+    # Prevent wiping the boot device
+    if [[ "$USBDEV" == "$BOOTDEV" ]]; then
+      echo
+      echo "ERROR: /dev/$USBDEV appears to be the boot device. Please choose another device."
+      read -p "Press Enter to continue..."
+      clear
+      continue
+    fi
+    break
+  fi
+  echo
+  echo "Device /dev/$USBDEV is not a valid local disk from the list above. Please try again."
+  read -p "Press Enter to continue..."
+  clear
+done
+
+# === Prep Working Directory ===
 echo
 echo "[*] Cleaning old build dirs..."
 if [ -d "$WORKDIR" ]; then
@@ -45,26 +108,13 @@ chmod 700 "$WORKDIR"
 cd "$WORKDIR"
 echo
 
-# === User verification step ===
-while true; do
-  echo
-  echo "============================================================================================================================"
-  echo
-  echo "Please ensure you have downloaded the latest version of CryptoShred.sh and placed it in $REAL_HOME/live-iso-work/CryptoShred.sh"
-  echo "Also, make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in."
-  echo
-  echo "============================================================================================================================"
-  echo
-  if [ ! -f "$CRYPTOSHRED_SCRIPT" ]; then
-    echo "[!] CryptoShred.sh not found at $CRYPTOSHRED_SCRIPT."
-    echo "    Please download and place it there before continuing."
-    read -p "Press Enter to retry..."
-    clear
-    continue
-  fi
-  read -p "Press Enter to continue..."
-  break
-done
+# === Download latest CryptoShred.sh ===
+REMOTE_CRYPTOSHRED_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/CryptoShred.sh"
+echo
+echo "[*] Downloading latest CryptoShred.sh..."
+echo
+curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$CRYPTOSHRED_SCRIPT"
+
 
 # === Verify required tools are installed on local host ===
 for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
@@ -213,7 +263,7 @@ xorriso -as mkisofs -o "$OUTISO" \
 # === 9. Write ISO to USB ===
 echo
 echo "[*] Writing ISO to USB ($USBDEV)..."
-dd if="$OUTISO" of="$USBDEV" bs=4M status=progress oflag=direct conv=fsync
+dd if="$OUTISO" of="/dev/$USBDEV" bs=4M status=progress oflag=direct conv=fsync
 sync
 
 echo
