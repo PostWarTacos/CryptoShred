@@ -4,7 +4,7 @@ clear
 echo "==========================================================================================="
 echo
 echo "CryptoShred - Securely encrypt and destroy key"
-echo "Version 1.2 - 2025-10-01"  
+echo "Version 1.3 - 2025-10-01"  
 echo "This script will encrypt an entire local drive with a random key, making all data"
 echo "on it permanently inaccessible. It supports both Opal hardware encryption (if"
 echo "available) and software LUKS2 encryption as a fallback."
@@ -12,12 +12,12 @@ echo
 echo "==========================================================================================="
 echo
 
-# List local drives (excluding loop, CD-ROM, and removable devices)
-echo "Available local drives:"
-lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi 'USB'
-echo
 # Identify the boot device to prevent accidental selection
 BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
+# List local drives (excluding loop, CD-ROM, and removable devices)
+echo "Available local drives:"
+lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
+echo
 while true; do
   # Prompt for device to encrypt
   read -p "Enter the device to encrypt (e.g., sdb, nvme0n1): " DEV
