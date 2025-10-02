@@ -45,10 +45,8 @@ echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pr
 echo "The resulting ISO will be written directly to the specified USB device."
 echo "Make sure to change the USB device and script are in place before proceeding."
 echo "WARNING: This will ERASE ALL DATA on the specified USB device."
-echo
 
 # === User verification step ===
-echo
 echo
 echo "IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in."
 echo
