@@ -3,7 +3,9 @@ set -euo pipefail
 clear
 
 if [ "$EUID" -ne 0 ]; then
+  echo
   echo "[!] Please run this script as root (sudo)."
+  echo
   exit 1
 fi
 
@@ -13,6 +15,7 @@ SCRIPT_VERSION=$(grep -m1 -oP 'Version\s+\K[0-9\. -]+' "$0")
 REMOTE_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/BuildCryptoShred.sh"
 
 # Download remote script to temp file and extract version
+echo
 echo "[*] Checking for latest BuildCryptoShred.sh version online..."
 REMOTE_SCRIPT="$(mktemp)"
 curl -s "$REMOTE_URL" -o "$REMOTE_SCRIPT"
@@ -24,6 +27,7 @@ if [ "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]; then
   echo "[!] Local script version ($SCRIPT_VERSION) does not match latest online version ($REMOTE_VERSION)."
   echo "    Updating local script with the latest version..."
   cp "$REMOTE_SCRIPT" "$0"
+  echo
   echo "[+] Script updated. Please re-run BuildCryptoShred.sh."
   rm "$REMOTE_SCRIPT"
   exit 0
@@ -31,10 +35,11 @@ fi
 rm "$REMOTE_SCRIPT"
 
 # === Main script ===
+echo
 echo "========================================= CryptoShred ISO Builder =========================================================="
 echo
 echo "CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed"
-echo "Version 1.3 - 2025-10-02"
+echo "Version 1.3.1 - 2025-10-02"
 echo
 echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
 echo "The resulting ISO will be written directly to the specified USB device."
@@ -67,6 +72,7 @@ OUTISO="CryptoShred.iso"
 CRYPTOSHRED_SCRIPT="$WORKDIR/CryptoShred.sh"
 
 # List local drives (excluding loop, CD-ROM, and removable devices)
+echo
 echo "Select the target USB device to write the ISO to."
 echo "Make sure to choose the correct device as all data on it will be erased!"
 echo "Available local drives:"
@@ -106,13 +112,11 @@ mkdir -p "$WORKDIR/iso"
 chown "$SUDO_USER":"$SUDO_USER" "$WORKDIR"
 chmod 700 "$WORKDIR"
 cd "$WORKDIR"
-echo
 
 # === Download latest CryptoShred.sh ===
 REMOTE_CRYPTOSHRED_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/CryptoShred.sh"
 echo
 echo "[*] Downloading latest CryptoShred.sh..."
-echo
 curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$CRYPTOSHRED_SCRIPT"
 
 
