@@ -160,7 +160,8 @@ echo "[*] Extracting ISO..."
 echo
 echo "[*] Extracting squashfs..."
 unsquashfs iso/live/filesystem.squashfs
-mv squashfs-root edit
+mv squashfs-root/* edit
+rm -rf squashfs-root
 
 # === 3. Copy CryptoShred.sh directly to /usr/bin in the chroot ===
 echo
@@ -169,6 +170,8 @@ cp $CRYPTOSHRED_SCRIPT edit/usr/bin/CryptoShred.sh
 chmod 755 edit/usr/bin/CryptoShred.sh
 
 # === 4. Create and enable service ===
+echo
+echo "[*] Creating CryptoShred service..."
 cat > edit/etc/systemd/system/cryptoshred.service <<'EOF'
 [Unit]
 Description=CryptoShred autorun
@@ -192,30 +195,38 @@ cd edit/etc/systemd/system/sysinit.target.wants
 ln -sf ../cryptoshred.service cryptoshred.service
 cd "$WORKDIR"
 
-# === 5. Mount drives for chroot ===
+# === 5. Chroot actions ===
 echo
 echo "[*] Mounting for chroot..."
 mount --bind /dev edit/dev
 mount --bind /run edit/run
 mount -t proc /proc edit/proc
 mount -t sysfs /sys edit/sys
+mount -t tmpfs tmpfs edit/tmp
 mount -t devpts /dev/pts edit/dev/pts
 
-#cp /etc/resolv.conf edit/etc/resolv.conf
+# Setup networking for chroot
+echo
+echo "[*] Setting up networking for chroot..."
+cp /etc/resolv.conf edit/etc/resolv.conf
+cat > edit/etc/apt/sources.list <<'EOF'
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+EOF
 
+
+# === Chroot and install cryptsetup ===
+echo
+echo "[*] Chrooting and installing cryptsetup..."
 cat <<'CHROOT' | chroot edit /bin/bash
 set -e
 export DEBIAN_FRONTEND=noninteractive
 
-cat >/etc/apt/sources.list <<EOF
-deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian trixie-updates main contrib non-free non-free-firmware
-EOF
-
 apt-get update
-apt-get -y upgrade
+apt-get -y full-upgrade
 apt-get -y install cryptsetup
+apt-get clean
 
 exit
 CHROOT
@@ -228,6 +239,7 @@ umount -lf edit/dev || true
 umount -lf edit/run || true
 umount -lf edit/proc || true
 umount -lf edit/sys || true
+umount -lf edit/tmp || true
 
 
 # === 6. Modify GRUB config to force first option ===
