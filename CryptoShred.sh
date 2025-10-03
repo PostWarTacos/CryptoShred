@@ -12,27 +12,25 @@ echo
 echo "==========================================================================================="
 echo
 
-# Identify the boot device to prevent accidental selection
-#BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
-BOOTDEV=$(lsblk -no PKNAME $(findmnt -no SOURCE /) 2>/dev/null)
-# List local drives (excluding loop, CD-ROM, and removable devices)
+# Identify the boot device (the parent block device of the live ISO)
+BOOT_DISK=$(lsblk -no PKNAME /run/live/medium 2>/dev/null)
+
+# List all block devices of type "disk", excluding the boot device
+AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOT_DISK$")
+
 echo "Available local drives:"
-#lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
-lsblk -d -o NAME,SIZE,MODEL,TYPE | awk '$4=="disk"' | grep -v "^$BOOTDEV"
+for disk in $AVAILABLE_DISKS; do
+    size=$(lsblk -ndo SIZE /dev/$disk)
+    model=$(lsblk -ndo MODEL /dev/$disk)
+    echo "  /dev/$disk  $size  $model"
+done
 echo
+
+# Prompt user to select a device
+# Loop until a valid device is selected
 while true; do
-  # Prompt for device to encrypt
   read -p "Enter the device to encrypt (e.g., sdb, nvme0n1): " DEV
-  # Check if entered device is in the lsblk output and is a disk
-  if lsblk -d -o NAME,TYPE | grep -E "^$DEV\s+disk" > /dev/null; then
-    # Prevent wiping the boot device
-    if [[ "$DEV" == "$BOOTDEV" ]]; then
-      echo
-      echo "ERROR: /dev/$DEV appears to be the boot device. Please choose another device."
-      read -p "Press Enter to continue..."
-      clear
-      continue
-    fi
+  if echo "$AVAILABLE_DISKS" | grep -qx "$DEV"; then
     break
   fi
   echo
