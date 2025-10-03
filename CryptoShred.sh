@@ -37,6 +37,11 @@ echo "DEBUG: ROOT_PART='$ROOT_PART'"
 echo "DEBUG: LIVE_MEDIUM='$LIVE_MEDIUM'"
 echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
 
+if [[ ! -t 0 ]]; then
+  echo "ERROR: No interactive terminal detected. Cannot prompt for input."
+  exit 1
+fi
+
 read -p "Press Enter to continue..."
 exit 0
 
