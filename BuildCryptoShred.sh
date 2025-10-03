@@ -39,7 +39,7 @@ rm "$REMOTE_SCRIPT"
 
 # === Main script ===
 echo
-echo "========================================= CryptoShred ISO Builder =========================================================="
+echo "================================================= CryptoShred ISO Builder ================================================="
 echo
 echo "CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed"
 echo "Version 1.4.1 - 2025-10-02"
@@ -53,7 +53,7 @@ echo "WARNING: This will ERASE ALL DATA on the specified USB device."
 echo
 echo "IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in."
 echo
-echo "============================================================================================================================"
+echo "==========================================================================================================================="
 echo
 read -p "Press Enter to continue..."
 
