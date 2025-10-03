@@ -192,7 +192,7 @@ EOF
 
 # Enable service
 cd edit/etc/systemd/system/sysinit.target.wants
-ln -sf ../cryptoshred.service cryptoshred.service
+ln -sf /etc/systemd/system/cryptoshred.service cryptoshred.service
 cd "$WORKDIR"
 
 # === 5. Chroot actions ===
