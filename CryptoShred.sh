@@ -43,7 +43,6 @@ if [[ ! -t 0 ]]; then
 fi
 
 read -p "Press Enter to continue..."
-exit 0
 
 # List all block devices of type "disk", excluding the boot device
 AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOT_DISK$")
