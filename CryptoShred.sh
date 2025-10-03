@@ -1,21 +1,4 @@
 #!/bin/bash
-echo "=== CryptoShred starting at $(date) ===" 
-echo "DEBUG: Script started successfully"
-
-echo "DEBUG: Testing lsblk command..."
-if lsblk >/dev/null 2>&1; then
-    echo "DEBUG: lsblk command works"
-    lsblk
-else
-    echo "ERROR: lsblk command failed"
-    exit 1
-fi
-
-echo "DEBUG: Testing findmnt command..."
-ROOT_SOURCE=$(findmnt -no SOURCE / 2>/dev/null)
-echo "DEBUG: Root filesystem source: '$ROOT_SOURCE'"
-
-sleep 2
 clear
 
 echo "==========================================================================================="
