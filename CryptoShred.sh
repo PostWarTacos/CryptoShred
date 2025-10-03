@@ -12,21 +12,6 @@ echo
 echo "==========================================================================================="
 echo
 
-# Identify the boot device (parent block device of root mount)
-echo "Identifying boot device..."
-ROOT_PART=$(findmnt -no SOURCE /)
-BOOT_DISK=$(lsblk -no PKNAME "$ROOT_PART" 2>/dev/null)
-
-echo "Checking for need to fallback..."
-# Fallback: if PKNAME is empty, try to extract disk name from ROOT_PART
-if [[ -z "$BOOT_DISK" && "$ROOT_PART" =~ ^/dev/([a-zA-Z0-9]+) ]]; then
-  BOOT_DISK="${BASH_REMATCH[1]}"
-fi
-
-echo "DEBUG: ROOT_PART='$ROOT_PART'"
-echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
-
-
 
 echo "Identifying boot device..."
 # Try overlay root, then fallback to live medium, then fallback to first mounted disk
