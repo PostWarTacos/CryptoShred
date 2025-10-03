@@ -1,6 +1,4 @@
 #!/bin/bash
-echo "=== CryptoShred starting at $(date) ===" | tee /dev/tty
-lsblk | tee /dev/tty
 
 clear
 echo "==========================================================================================="
