@@ -1,6 +1,10 @@
 #!/bin/bash
 clear
 
+echo
+lsblk
+echo
+
 echo "==========================================================================================="
 echo
 echo "CryptoShred - Securely encrypt and destroy key"
@@ -17,7 +21,14 @@ BOOT_DISK=$(lsblk -no PKNAME /run/live/medium 2>/dev/null)
 
 # List all block devices of type "disk", excluding the boot device
 AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOT_DISK$")
-
+echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
+echo "DEBUG: AVAILABLE_DISKS='$AVAILABLE_DISKS'"
+echo
+if [[ -z "$AVAILABLE_DISKS" ]]; then
+  echo "ERROR: No available local drives found."
+  exit 1
+fi
+echo
 echo "Available local drives:"
 for disk in $AVAILABLE_DISKS; do
     size=$(lsblk -ndo SIZE /dev/$disk)
