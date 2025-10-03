@@ -1,8 +1,23 @@
 #!/bin/bash
-echo "=== CryptoShred starting at $(date) ===" | tee /dev/tty
-lsblk | tee /dev/tty
+echo "=== CryptoShred starting at $(date) ===" 
+echo "DEBUG: Script started successfully"
 
+echo "DEBUG: Testing lsblk command..."
+if lsblk >/dev/null 2>&1; then
+    echo "DEBUG: lsblk command works"
+    lsblk
+else
+    echo "ERROR: lsblk command failed"
+    exit 1
+fi
+
+echo "DEBUG: Testing findmnt command..."
+ROOT_SOURCE=$(findmnt -no SOURCE / 2>/dev/null)
+echo "DEBUG: Root filesystem source: '$ROOT_SOURCE'"
+
+sleep 2
 clear
+
 echo "==========================================================================================="
 echo
 echo "CryptoShred - Securely encrypt and destroy key"
@@ -14,18 +29,33 @@ echo
 echo "==========================================================================================="
 echo
 
+echo "DEBUG: Detecting boot device..."
 # Identify the boot device to prevent accidental selection
-BOOTDEV=$(lsblk -no PKNAME $(findmnt -no SOURCE /) 2>/dev/null)
+if [[ -n "$ROOT_SOURCE" ]]; then
+    BOOTDEV=$(lsblk -no PKNAME "$ROOT_SOURCE" 2>/dev/null)
+else
+    BOOTDEV=""
+fi
 echo "DEBUG: Boot device detected as: '$BOOTDEV'"
 
 # List local drives (excluding loop, CD-ROM, and removable devices)
 echo "Available local drives:"
+echo "DEBUG: Running lsblk to list drives..."
+
+# Test if the command works at all
+if ! lsblk -d -o NAME,SIZE,MODEL,TYPE >/dev/null 2>&1; then
+    echo "ERROR: Cannot list drives. lsblk command failed."
+    exit 1
+fi
+
 if [[ -n "$BOOTDEV" ]]; then
+    echo "DEBUG: Filtering out boot device '$BOOTDEV'"
     lsblk -d -o NAME,SIZE,MODEL,TYPE | awk '$4=="disk"' | grep -v "^$BOOTDEV"
 else
     echo "WARNING: Could not detect boot device. Showing all disks:"
     lsblk -d -o NAME,SIZE,MODEL,TYPE | awk '$4=="disk"'
 fi
+echo "DEBUG: Drive listing complete"
 echo
 while true; do
   # Prompt for device to encrypt
