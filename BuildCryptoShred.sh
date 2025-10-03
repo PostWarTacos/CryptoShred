@@ -186,7 +186,7 @@ Wants=systemd-udev-settle.service
 [Service]
 Type=simple
 ExecStartPre=/bin/sleep 10
-ExecStart=/usr/bin/CryptoShred.sh
+ExecStart=/bin/bash -i /usr/bin/CryptoShred.sh < /dev/tty1 > /dev/tty1 2>&1
 StandardOutput=journal+console
 StandardError=journal+console
 Restart=on-failure
