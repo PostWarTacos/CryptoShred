@@ -182,6 +182,7 @@ Wants=systemd-udev-settle.service
 
 [Service]
 Type=simple
+ExecStartPre=/bin/sleep 5
 ExecStart=/usr/bin/CryptoShred.sh
 Restart=on-failure
 RestartSec=5s
