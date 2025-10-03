@@ -15,10 +15,12 @@ echo "==========================================================================
 echo
 
 # Identify the boot device to prevent accidental selection
-BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
+#BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
+BOOTDEV=$(lsblk -no PKNAME $(findmnt -no SOURCE /) 2>/dev/null)
 # List local drives (excluding loop, CD-ROM, and removable devices)
 echo "Available local drives:"
-lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
+#lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
+lsblk -d -o NAME,SIZE,MODEL,TYPE | awk '$4=="disk"' | grep -v "^$BOOTDEV"
 echo
 while true; do
   # Prompt for device to encrypt
