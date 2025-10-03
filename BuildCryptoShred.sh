@@ -9,6 +9,9 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# Record start time
+START_TIME=$(date +%s)
+
 # === Version check ===
 # Dynamically extract version from this script
 SCRIPT_VERSION=$(grep -m1 -oP 'Version\s+\K[0-9\. -]+' "$0")
@@ -282,5 +285,8 @@ echo "[*] Writing ISO to USB ($USBDEV)..."
 dd if="$OUTISO" of="/dev/$USBDEV" bs=4M status=progress oflag=direct conv=fsync
 sync
 
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
 echo
 echo "[+] Done. USB is ready!"
+echo "[*] Total time elapsed: $((ELAPSED / 60)) min $((ELAPSED % 60)) sec"
