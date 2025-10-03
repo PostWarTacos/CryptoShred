@@ -2,7 +2,7 @@
 clear
 
 echo
-lsblk -d -o NAME,SIZE,MODEL,TYPE,RM | awk '$4=="disk" && $5==0'
+lsblk -d -o NAME,SIZE,TYPE
 echo
 
 echo "==========================================================================================="
@@ -16,8 +16,19 @@ echo
 echo "==========================================================================================="
 echo
 
-# Identify the boot device (the parent block device of the live ISO)
-BOOT_DISK=$(lsblk -no PKNAME $(findmnt -no SOURCE /) 2>/dev/null)
+# Identify the boot device (parent block device of root mount)
+echo "Identifying boot device..."
+ROOT_PART=$(findmnt -no SOURCE /)
+BOOT_DISK=$(lsblk -no PKNAME "$ROOT_PART" 2>/dev/null)
+
+echo "Checking for need to fallback..."
+# Fallback: if PKNAME is empty, try to extract disk name from ROOT_PART
+if [[ -z "$BOOT_DISK" && "$ROOT_PART" =~ ^/dev/([a-zA-Z0-9]+) ]]; then
+  BOOT_DISK="${BASH_REMATCH[1]}"
+fi
+
+echo "DEBUG: ROOT_PART='$ROOT_PART'"
+echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
 
 # List all block devices of type "disk", excluding the boot device
 AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOT_DISK$")
