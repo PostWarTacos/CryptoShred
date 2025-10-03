@@ -1,10 +1,6 @@
 #!/bin/bash
 clear
 
-echo
-lsblk -d -o NAME,SIZE,TYPE
-echo
-
 echo "==========================================================================================="
 echo
 echo "CryptoShred - Securely encrypt and destroy key"
@@ -29,6 +25,35 @@ fi
 
 echo "DEBUG: ROOT_PART='$ROOT_PART'"
 echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
+
+
+
+echo "Identifying boot device..."
+# Try overlay root, then fallback to live medium, then fallback to first mounted disk
+ROOT_PART=$(findmnt -no SOURCE /)
+if [[ "$ROOT_PART" == "overlay" ]]; then
+  echo "First trigger"
+  LIVE_MEDIUM=$(mount | grep -E '/run/live/medium|/mnt/live' | awk '{print $1}' | head -n1)
+  BOOT_DISK=$(lsblk -no PKNAME "$LIVE_MEDIUM" 2>/dev/null)
+  # Fallback: If still empty, use first disk with a mountpoint
+  if [[ -z "$BOOT_DISK" ]]; then
+    echo "Second trigger"
+    BOOT_DISK=$(lsblk -ndo NAME,MOUNTPOINT,TYPE | awk '$2!="" && $3=="disk"{print $1}' | head -n1)
+  fi
+else
+  echo "Third trigger"
+  BOOT_DISK=$(lsblk -no PKNAME "$ROOT_PART" 2>/dev/null)
+  if [[ -z "$BOOT_DISK" && "$ROOT_PART" =~ ^/dev/([a-zA-Z0-9]+) ]]; then
+    BOOT_DISK="${BASH_REMATCH[1]}"
+  fi
+fi
+
+echo "DEBUG: ROOT_PART='$ROOT_PART'"
+echo "DEBUG: LIVE_MEDIUM='$LIVE_MEDIUM'"
+echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
+
+read -p "Press Enter to continue..."
+exit 0
 
 # List all block devices of type "disk", excluding the boot device
 AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOT_DISK$")
