@@ -2,7 +2,7 @@
 clear
 
 echo
-lsblk
+lsblk -d -o NAME,SIZE,MODEL,TYPE,RM | awk '$4=="disk" && $5==0'
 echo
 
 echo "==========================================================================================="
@@ -17,7 +17,7 @@ echo "==========================================================================
 echo
 
 # Identify the boot device (the parent block device of the live ISO)
-BOOT_DISK=$(lsblk -no PKNAME /run/live/medium 2>/dev/null)
+BOOT_DISK=$(lsblk -no PKNAME $(findmnt -no SOURCE /) 2>/dev/null)
 
 # List all block devices of type "disk", excluding the boot device
 AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOT_DISK$")
