@@ -1,4 +1,6 @@
 #!/bin/bash
+echo "=== CryptoShred starting at $(date) ===" | tee /dev/tty
+lsblk | tee /dev/tty
 
 clear
 echo "==========================================================================================="
@@ -13,20 +15,25 @@ echo "==========================================================================
 echo
 
 # Identify the boot device to prevent accidental selection
-#BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
 BOOTDEV=$(lsblk -no PKNAME $(findmnt -no SOURCE /) 2>/dev/null)
+echo "DEBUG: Boot device detected as: '$BOOTDEV'"
+
 # List local drives (excluding loop, CD-ROM, and removable devices)
 echo "Available local drives:"
-#lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
-lsblk -d -o NAME,SIZE,MODEL,TYPE | awk '$4=="disk"' | grep -v "^$BOOTDEV"
+if [[ -n "$BOOTDEV" ]]; then
+    lsblk -d -o NAME,SIZE,MODEL,TYPE | awk '$4=="disk"' | grep -v "^$BOOTDEV"
+else
+    echo "WARNING: Could not detect boot device. Showing all disks:"
+    lsblk -d -o NAME,SIZE,MODEL,TYPE | awk '$4=="disk"'
+fi
 echo
 while true; do
   # Prompt for device to encrypt
   read -p "Enter the device to encrypt (e.g., sdb, nvme0n1): " DEV
   # Check if entered device is in the lsblk output and is a disk
   if lsblk -d -o NAME,TYPE | grep -E "^$DEV\s+disk" > /dev/null; then
-    # Prevent wiping the boot device
-    if [[ "$DEV" == "$BOOTDEV" ]]; then
+    # Prevent wiping the boot device (only if we successfully detected it)
+    if [[ -n "$BOOTDEV" && "$DEV" == "$BOOTDEV" ]]; then
       echo
       echo "ERROR: /dev/$DEV appears to be the boot device. Please choose another device."
       read -p "Press Enter to continue..."
