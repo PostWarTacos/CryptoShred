@@ -15,6 +15,16 @@ if [ "${DEBUG:-0}" -ne 0 ] 2>/dev/null; then
   set -x
 fi
 
+# Normalize environment to mimic an interactive root login (sudo -i).
+# This avoids PATH/HOME/LANG differences between manual runs and scripted runs.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export LANG="${LANG:-C.UTF-8}"
+export HOME="${HOME:-/root}"
+
+echo
+echo "[NOTE] For deterministic results run this script from an interactive root shell (e.g. 'sudo -i')"
+
+
 # Create a logfile to capture the full run for debugging (timestamped)
 LOGDIR="/var/log/cryptoshred"
 mkdir -p "$LOGDIR"
@@ -183,6 +193,37 @@ for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
   fi
 done
 
+# Resolve absolute paths to key tools so later invocations are deterministic
+# and not sensitive to PATH differences. If install above succeeded these
+# should be present; fail early if not.
+SEVEN_Z="$(command -v 7z || true)"
+if [ -z "$SEVEN_Z" ]; then
+  SEVEN_Z="$(command -v 7zr || true)"
+fi
+UNSQUASHFS="$(command -v unsquashfs || true)"
+MKSQUASHFS="$(command -v mksquashfs || true)"
+XORRISO="$(command -v xorriso || true)"
+
+CURL="$(command -v curl || true)"
+if [ -z "$CURL" ]; then
+  echo
+  echo "[!] curl not found after install attempt (unexpected)."
+  exit 1
+fi
+
+MISSING=""
+if [ -z "$SEVEN_Z" ]; then MISSING="$MISSING 7z"; fi
+if [ -z "$UNSQUASHFS" ]; then MISSING="$MISSING unsquashfs"; fi
+if [ -z "$MKSQUASHFS" ]; then MISSING="$MISSING mksquashfs"; fi
+if [ -z "$XORRISO" ]; then MISSING="$MISSING xorriso"; fi
+if [ -n "$MISSING" ]; then
+  echo
+  echo "[!] Missing required tools after install attempt:$MISSING"
+  echo "    This usually indicates the script ran with a restricted PATH."
+  echo "    Ensure the required packages are installed and re-run."
+  exit 1
+fi
+
 # === 1. Download latest Debian LTS netinst/live ISO ===
 echo
 echo "[*] Fetching latest Debian ISO link..."
@@ -198,12 +239,12 @@ wget -q --show-progress \
 # === 2. Extract ISO contents ===
 echo
 echo "[*] Extracting ISO..."
-7z x debian.iso -oiso >/dev/null
+"$SEVEN_Z" x debian.iso -oiso >/dev/null
 
 # Extract squashfs
 echo
 echo "[*] Extracting squashfs..."
-unsquashfs iso/live/filesystem.squashfs
+"$UNSQUASHFS" iso/live/filesystem.squashfs
 mv squashfs-root/* edit
 rm -rf squashfs-root
 
@@ -311,7 +352,7 @@ fi
 # === 7. Rebuild squashfs ===
 echo
 echo "[*] Rebuilding squashfs..."
-mksquashfs edit iso/live/filesystem.squashfs -noappend -e boot
+"$MKSQUASHFS" edit iso/live/filesystem.squashfs -noappend -e boot
 
 # === 8. Rebuild ISO ===
 echo
@@ -371,8 +412,8 @@ XORRISO_ARGS+=( "${ISOLINUX_OPTIONS[@]}" )
 XORRISO_ARGS+=( "${EFI_OPT[@]}" )
 XORRISO_ARGS+=( "$ISO_ROOT" )
 
-echo "[INFO] Running: xorriso ${XORRISO_ARGS[*]}"
-xorriso "${XORRISO_ARGS[@]}"
+echo "[INFO] Running: $XORRISO ${XORRISO_ARGS[*]}"
+"$XORRISO" "${XORRISO_ARGS[@]}"
 
 # === 9. Write ISO to USB ===
 echo

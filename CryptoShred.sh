@@ -1,6 +1,46 @@
 #!/bin/bash
 clear
 
+# Persistent logging so we can inspect live runs after first boot
+LOGDIR="/var/log/cryptoshred"
+mkdir -p "$LOGDIR"
+LOGFILE="$LOGDIR/cryptoshred-$(date +%Y%m%d-%H%M%S).log"
+# Redirect stdout/stderr to logfile while still echoing to console when possible
+exec > >(tee -a "$LOGFILE") 2>&1
+
+echo
+echo "[LOGFILE] $LOGFILE"
+echo "[INFO] Invoked by: $(whoami)"
+echo "[INFO] Shell: $SHELL"
+echo
+
+# Helper: prompt and wait for Enter. Reads from /dev/tty if available so it works
+# when this script is run under systemd with a console attached.
+prompt_enter() {
+  local prompt="${1:-Press Enter to continue...}"
+  if [ -e /dev/tty ]; then
+    printf "%s" "$prompt" > /dev/tty
+    read -r _ < /dev/tty
+  else
+    printf "%s" "$prompt"
+    read -r _
+  fi
+}
+
+# Helper: prompt for input and print the response. Caller should capture output.
+prompt_read() {
+  local prompt="${1:-}"
+  local input
+  if [ -e /dev/tty ]; then
+    printf "%s" "$prompt" > /dev/tty
+    read -r input < /dev/tty
+  else
+    printf "%s" "$prompt"
+    read -r input
+  fi
+  printf '%s' "$input"
+}
+
 echo "==========================================================================================="
 echo
 echo "CryptoShred - Securely encrypt and destroy key"
@@ -37,12 +77,7 @@ echo "DEBUG: ROOT_PART='$ROOT_PART'"
 echo "DEBUG: LIVE_MEDIUM='$LIVE_MEDIUM'"
 echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
 
-if [[ ! -t 0 ]]; then
-  echo "ERROR: No interactive terminal detected. Cannot prompt for input."
-  exit 1
-fi
-
-read -p "Press Enter to continue..."
+prompt_enter "Press Enter to continue..."
 
 # List all block devices of type "disk", excluding the boot device
 AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOT_DISK$")
@@ -65,13 +100,13 @@ echo
 # Prompt user to select a device
 # Loop until a valid device is selected
 while true; do
-  read -p "Enter the device to encrypt (e.g., sdb, nvme0n1): " DEV
+  DEV=$(prompt_read "Enter the device to encrypt (e.g., sdb, nvme0n1): ")
   if echo "$AVAILABLE_DISKS" | grep -qx "$DEV"; then
     break
   fi
   echo
   echo "Device /dev/$DEV is not a valid local disk from the list above. Please try again."
-  read -p "Press Enter to continue..."
+  prompt_enter "Press Enter to continue..."
   clear
 done
 
@@ -97,19 +132,18 @@ echo
 
 # Confirm action
 while true; do
-  read -p "Type 'YES' in capital letters to continue: " CONFIRM
+  CONFIRM=$(prompt_read "Type 'YES' in capital letters to continue: ")
   # Check for exact match
   if [[ "$CONFIRM" == "YES" ]]; then
     break
-  # elif [[ "$CONFIRM" == "yes" || "$CONFIRM" == "y" ]]; then continue
   elif [[ "${CONFIRM,,}" == "y" || "${CONFIRM,,}" == "yes" ]]; then
-    read -p "Press Enter to continue..."
+    prompt_enter "Press Enter to continue..."
     clear
     continue
   else
     echo
     echo "Aborted."
-    read -p "Press Enter to continue..."
+    prompt_enter "Press Enter to continue..."
     clear
     exit 1
   fi
