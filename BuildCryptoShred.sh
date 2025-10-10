@@ -225,28 +225,30 @@ echo
 echo "[*] Creating CryptoShred service..."
 cat > edit/etc/systemd/system/cryptoshred.service <<'EOF'
 [Unit]
-Description=CryptoShred autorun
-DefaultDependencies=no
-After=systemd-udevd.service systemd-udev-settle.service local-fs-pre.target
-Before=local-fs.target
-Wants=systemd-udev-settle.service
+Description=CryptoShred autorun (first-boot)
+After=systemd-udevd.service systemd-udev-settle.service getty@tty1.service
+Wants=systemd-udev-settle.service getty@tty1.service
 
 [Service]
 Type=simple
-ExecStartPre=/bin/sleep 10
-ExecStart=/bin/bash -i /usr/bin/CryptoShred.sh < /dev/tty1 > /dev/tty1 2>&1
+# Short delay to allow the console and devices to be ready
+ExecStartPre=/bin/sleep 5
+# Run the interactive script; let systemd connect a tty rather than using shell redirection
+ExecStart=/bin/bash -i /usr/bin/CryptoShred.sh
+StandardInput=tty
+TTYPath=/dev/console
 StandardOutput=journal+console
 StandardError=journal+console
 Restart=on-failure
 RestartSec=5s
 
 [Install]
-WantedBy=sysinit.target
+WantedBy=multi-user.target
 EOF
 
-# Enable service
-cd edit/etc/systemd/system/sysinit.target.wants
-ln -sf /etc/systemd/system/cryptoshred.service cryptoshred.service
+# Enable service under multi-user.target (more reliable for live systems than sysinit.target)
+mkdir -p edit/etc/systemd/system/multi-user.target.wants
+ln -sf /etc/systemd/system/cryptoshred.service edit/etc/systemd/system/multi-user.target.wants/cryptoshred.service
 cd "$WORKDIR"
 
 # === 5. Chroot actions ===
