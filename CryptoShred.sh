@@ -1,10 +1,23 @@
 #!/bin/bash
 clear
 
+# Create persistent log dir and redirect stdout/stderr to a logfile while still echoing to console
+LOGDIR="/var/log/cryptoshred"
+mkdir -p "$LOGDIR"
+LOGFILE="$LOGDIR/cryptoshred-$(date +%Y%m%d-%H%M%S).log"
+# Use tee so output still appears on the console
+exec > >(tee -a "$LOGFILE") 2>&1
+echo
+echo "[LOGFILE] $LOGFILE"
+echo "[TIME] Start: $(date '+%Y-%m-%d %H:%M:%S %z')"
+echo "[ENV] Invoked by: $(whoami)" 
+env | sort
+
+
 echo "==========================================================================================="
 echo
 echo "CryptoShred - Securely encrypt and destroy key"
-echo "Version 1.3 - 2025-10-01"  
+echo "Version 1.4 - 2025-10-01"  
 echo "This script will encrypt an entire local drive with a random key, making all data"
 echo "on it permanently inaccessible. It supports both Opal hardware encryption (if"
 echo "available) and software LUKS2 encryption as a fallback."
@@ -37,12 +50,48 @@ echo "DEBUG: ROOT_PART='$ROOT_PART'"
 echo "DEBUG: LIVE_MEDIUM='$LIVE_MEDIUM'"
 echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
 
-if [[ ! -t 0 ]]; then
+# Helper to prompt the user. If stdin is not a tty, try /dev/tty. If no tty is available,
+# either wait a short time or abort depending on whether the prompt is a confirmation.
+prompt_enter() {
+  local msg="${1:-Press Enter to continue...}"
+  if [ -t 0 ]; then
+    read -r -p "$msg"
+  elif [ -c /dev/tty ]; then
+    read -r -p "$msg" < /dev/tty
+  else
+    # No tty available; wait briefly so a user watching console can see output, then continue
+    echo "$msg (no tty available — continuing in 5s)"
+    sleep 5
+  fi
+}
+
+prompt_confirm() {
+  # Returns 0 if user typed YES, non-zero otherwise. If no tty, return non-zero.
+  local ans
+  if [ -t 0 ]; then
+    read -r -p "$1" ans
+  elif [ -c /dev/tty ]; then
+    read -r -p "$1" ans < /dev/tty
+  else
+    echo "No interactive terminal available for confirmation. Aborting."
+    return 1
+  fi
+  if [[ "$ans" == "YES" ]]; then
+    return 0
+  fi
+  if [[ "${ans,,}" == "y" || "${ans,,}" == "yes" ]]; then
+    return 2
+  fi
+  return 1
+}
+
+# Ensure we have a tty for prompts; if neither stdin nor /dev/tty are available, abort.
+if [[ ! -t 0 ]] && [ ! -c /dev/tty ]; then
   echo "ERROR: No interactive terminal detected. Cannot prompt for input."
   exit 1
 fi
 
-read -p "Press Enter to continue..."
+prompt_enter "Press Enter to continue..."
 
 # List all block devices of type "disk", excluding the boot device
 AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOT_DISK$")
@@ -71,8 +120,8 @@ while true; do
   fi
   echo
   echo "Device /dev/$DEV is not a valid local disk from the list above. Please try again."
-  read -p "Press Enter to continue..."
-  clear
+    prompt_enter "Press Enter to continue..."
+    clear
 done
 
 # Prevent wiping the boot device
@@ -97,21 +146,22 @@ echo
 
 # Confirm action
 while true; do
-  read -p "Type 'YES' in capital letters to continue: " CONFIRM
-  # Check for exact match
-  if [[ "$CONFIRM" == "YES" ]]; then
+  if prompt_confirm "Type 'YES' in capital letters to continue: "; then
     break
-  # elif [[ "$CONFIRM" == "yes" || "$CONFIRM" == "y" ]]; then continue
-  elif [[ "${CONFIRM,,}" == "y" || "${CONFIRM,,}" == "yes" ]]; then
-    read -p "Press Enter to continue..."
-    clear
-    continue
   else
-    echo
-    echo "Aborted."
-    read -p "Press Enter to continue..."
-    clear
-    exit 1
+    rc=$?
+    if [ "$rc" -eq 2 ]; then
+      # user answered yes/y shorthand — prompt to continue
+      prompt_enter "Press Enter to continue..."
+      clear
+      continue
+    else
+      echo
+      echo "Aborted."
+      prompt_enter "Press Enter to continue..."
+      clear
+      exit 1
+    fi
   fi
 done
 
@@ -175,7 +225,7 @@ else # Fallback to LUKS2
   echo "Data is permanently inaccessible."
   echo "No filesystem created, drive encrypts transparently."
   echo
-  read -p "Press Enter to continue..."
+  prompt_enter "Press Enter to continue..."
   clear
   # Will return 0 and continue to the end of the script
   # Which will restart the script to allow another device to be selected
