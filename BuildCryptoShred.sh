@@ -1,11 +1,3 @@
-
-
-# updates needed
-# install/update curl
-# move verify apps up
-
-
-
 #!/bin/bash
 set -euo pipefail
 clear
@@ -106,7 +98,6 @@ else
 fi
 WORKDIR="$REAL_HOME/live-iso-work"
 OUTISO="CryptoShred.iso"
-#USBDEV="/dev/sda"
 CRYPTOSHRED_SCRIPT="$WORKDIR/CryptoShred.sh"
 
 # Identify the boot device to prevent accidental selection

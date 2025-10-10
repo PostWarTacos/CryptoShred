@@ -110,14 +110,6 @@ while true; do
   clear
 done
 
-# Prevent wiping the boot device
-#BOOTDEV=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {})
-#if [[ "$DEV" == "$BOOTDEV" ]]; then
-#  echo
-#  echo "ERROR: /dev/$DEV appears to be the boot device. Aborting."
-#  exit 1
-#fi
-
 # Disable all swap
 # This is important before wiping a drive to prevent any swap partitions from being in use
 # and to ensure no data remnants remain in swap
@@ -155,11 +147,7 @@ sudo umount /dev/${DEV}? 2>/dev/null
 sudo umount -l /dev/$DEV* 2>/dev/null
 sudo wipefs -a /dev/$DEV
 
-# (Optional) Full overwrite with random data
-# If you want to ensure no data remnants remain, uncomment this section.
-# Note: This can take hours on large drives.
-# If you want to skip this, the quick header/edge wipe (next section below) is usually sufficient.
-# echo "Overwriting /dev/$DEV with random data. This may take a long time..."
+# (Optional) Uncomment to overwrite the entire device with random data (slow):
 # sudo dd if=/dev/urandom of=/dev/$DEV bs=10M status=progress
 
 # Quick wipe of headers and edges before encryption
@@ -207,7 +195,6 @@ else # Fallback to LUKS2
   echo
   echo "Drive /dev/$DEV has been encrypted with a random one-time passphrase."
   echo "Data is permanently inaccessible."
-  echo "No filesystem created, drive encrypts transparently."
   echo
   read -p "Press Enter to continue..."
   clear
