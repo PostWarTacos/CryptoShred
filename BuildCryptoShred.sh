@@ -1,6 +1,36 @@
+
+
+# updates needed
+# install/update curl
+# move verify apps up
+
+
+
 #!/bin/bash
 set -euo pipefail
 clear
+
+# Optional debugging/tracing. Set DEBUG=1 in environment to enable shell tracing.
+if [ "${DEBUG:-0}" -ne 0 ] 2>/dev/null; then
+  set -x
+fi
+
+# Create a logfile to capture the full run for debugging (timestamped)
+LOGDIR="/var/log/cryptoshred"
+mkdir -p "$LOGDIR"
+LOGFILE="$LOGDIR/build-$(date +%Y%m%d-%H%M%S).log"
+# Redirect stdout/stderr to logfile while still allowing console output when interactive
+exec > >(tee -a "$LOGFILE") 2>&1
+
+echo
+echo "[LOGFILE] $LOGFILE"
+echo "[INFO] Invoked by: $(whoami) (SUDO_USER=${SUDO_USER:-undefined})"
+echo "[INFO] Shell: $SHELL" 
+echo "[INFO] PATH: $PATH"
+echo "[INFO] HOME: $HOME" 
+echo "[INFO] Real home inferred: ${REAL_HOME:-unset}"
+echo "[INFO] Environment dump:" 
+env | sort
 
 if [ "$EUID" -ne 0 ]; then
   echo
@@ -109,15 +139,26 @@ if [ -d "$WORKDIR" ]; then
 fi
 mkdir -p "$WORKDIR/edit"
 mkdir -p "$WORKDIR/iso"
-chown "$SUDO_USER":"$SUDO_USER" "$WORKDIR"
+# Only attempt to chown if SUDO_USER is set and maps to a valid user
+if [ -n "${SUDO_USER:-}" ] && getent passwd "$SUDO_USER" >/dev/null 2>&1; then
+  chown "$SUDO_USER":"$SUDO_USER" "$WORKDIR"
+fi
 chmod 700 "$WORKDIR"
 cd "$WORKDIR"
 
 # === Download latest CryptoShred.sh ===
 REMOTE_CRYPTOSHRED_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/CryptoShred.sh"
-echo
 echo "[*] Downloading latest CryptoShred.sh..."
 curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$CRYPTOSHRED_SCRIPT"
+
+echo
+echo "[*] Downloading latest CryptoShred.sh..."
+mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
+if ! curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$CRYPTOSHRED_SCRIPT"; then
+  echo
+  echo "[!] Failed to download CryptoShred.sh from $REMOTE_CRYPTOSHRED_URL"
+  exit 1
+fi
 
 
 # === Verify required tools are installed on local host ===
@@ -167,10 +208,17 @@ mv squashfs-root/* edit
 rm -rf squashfs-root
 
 # === 3. Copy CryptoShred.sh directly to /usr/bin in the chroot ===
+echo "[*] Copying CryptoShred.sh to usr/bin..."
 echo
 echo "[*] Copying CryptoShred.sh to usr/bin..."
-cp $CRYPTOSHRED_SCRIPT edit/usr/bin/CryptoShred.sh
-chmod 755 edit/usr/bin/CryptoShred.sh
+if [ ! -f "$CRYPTOSHRED_SCRIPT" ]; then
+  echo
+  echo "[!] $CRYPTOSHRED_SCRIPT not found. Aborting."
+  exit 1
+fi
+mkdir -p edit/usr/bin
+cp -- "$CRYPTOSHRED_SCRIPT" "edit/usr/bin/CryptoShred.sh"
+chmod 755 "edit/usr/bin/CryptoShred.sh"
 
 # === 4. Create and enable service ===
 echo
@@ -268,16 +316,63 @@ mksquashfs edit iso/live/filesystem.squashfs -noappend -e boot
 # === 8. Rebuild ISO ===
 echo
 echo "[*] Building ISO..."
-xorriso -as mkisofs -o "$OUTISO" \
-  -r -V "CryptoShred" \
-  -J -l -cache-inodes -iso-level 3 \
-  -partition_offset 16 -A "CryptoShred" \
-  -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
-  -c isolinux/boot.cat -b isolinux/isolinux.bin \
-  -no-emul-boot -boot-load-size 4 -boot-info-table \
-  -eltorito-alt-boot \
-  -e boot/grub/efi.img -no-emul-boot -isohybrid-gpt-basdat \
-  iso
+# Locate isohdpfx.bin used by isohybrid. Different distros/packages install it in
+# different locations. Try a set of common candidates and only pass the option
+# to xorriso if we find it on the host filesystem.
+ISOHYBRID_CANDIDATES=(
+  /usr/lib/ISOLINUX/isohdpfx.bin
+  /usr/lib/isolinux/isohdpfx.bin
+  /usr/lib/syslinux/isohdpfx.bin
+  /usr/lib/syslinux/modules/bios/isohdpfx.bin
+  /usr/lib/syslinux/modules/efi/isohdpfx.bin
+)
+ISOHYBRID_MBR_OPT=""
+for cand in "${ISOHYBRID_CANDIDATES[@]}"; do
+  if [ -f "$cand" ]; then
+    ISOHYBRID_MBR_OPT=( -isohybrid-mbr "$cand" )
+    echo "[INFO] Using isohybrid MBR from: $cand"
+    break
+  fi
+done
+if [ -z "${ISOHYBRID_MBR_OPT[*]:-}" ]; then
+  echo "[WARN] isohdpfx.bin not found in known locations; proceeding without -isohybrid-mbr."
+  echo "[WARN] This may affect BIOS bootability on some systems."
+fi
+
+# Build the ISO. Use the computed ISOHYBRID_MBR_OPT (may be empty).
+ISO_ROOT="$WORKDIR/iso"
+if [ ! -d "$ISO_ROOT" ]; then
+  echo "[ERROR] ISO root directory not found at $ISO_ROOT"
+  exit 1
+fi
+
+# Check isolinux files; if missing, skip BIOS isolinux options (ISO will still have EFI boot if present)
+ISOLINUX_OPTIONS=()
+if [ -f "$ISO_ROOT/isolinux/isolinux.bin" ] && [ -f "$ISO_ROOT/isolinux/boot.cat" ]; then
+  ISOLINUX_OPTIONS=( -c isolinux/boot.cat -b isolinux/isolinux.bin -no-emul-boot -boot-load-size 4 -boot-info-table )
+else
+  echo "[WARN] isolinux/isolinux.bin or isolinux/boot.cat not found in $ISO_ROOT; skipping isolinux BIOS options."
+fi
+
+# Check EFI image
+EFI_OPT=()
+if [ -f "$ISO_ROOT/boot/grub/efi.img" ]; then
+  EFI_OPT=( -eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot -isohybrid-gpt-basdat )
+else
+  echo "[WARN] EFI image boot/grub/efi.img not found in $ISO_ROOT; skipping EFI options."
+fi
+
+# Build argument array safely and run xorriso
+XORRISO_ARGS=( -as mkisofs -o "$OUTISO" -r -V "CryptoShred" -J -l -iso-level 3 -partition_offset 16 -A "CryptoShred" )
+if [ -n "${ISOHYBRID_MBR_OPT[*]:-}" ]; then
+  XORRISO_ARGS+=( "${ISOHYBRID_MBR_OPT[@]}" )
+fi
+XORRISO_ARGS+=( "${ISOLINUX_OPTIONS[@]}" )
+XORRISO_ARGS+=( "${EFI_OPT[@]}" )
+XORRISO_ARGS+=( "$ISO_ROOT" )
+
+echo "[INFO] Running: xorriso ${XORRISO_ARGS[*]}"
+xorriso "${XORRISO_ARGS[@]}"
 
 # === 9. Write ISO to USB ===
 echo
