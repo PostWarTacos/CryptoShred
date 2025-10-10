@@ -1,11 +1,3 @@
-
-
-# updates needed
-# install/update curl
-# move verify apps up
-
-
-
 #!/bin/bash
 set -euo pipefail
 clear
@@ -41,6 +33,44 @@ fi
 
 # Record start time
 START_TIME=$(date +%s)
+START_TS=$(date +"%Y-%m-%d %H:%M:%S")
+echo
+echo "[TIME] Start: $START_TS"
+
+# Ensure we always record end time and elapsed duration, even on failures
+finish() {
+  END_TIME=$(date +%s)
+  END_TS=$(date +"%Y-%m-%d %H:%M:%S %z")
+  ELAPSED=$((END_TIME - START_TIME))
+  echo
+  echo "[TIME] End: $END_TS"
+  echo "[TIME] Elapsed: $((ELAPSED / 60)) min $((ELAPSED % 60)) sec"
+}
+trap finish EXIT
+
+# === Verify required tools are installed on local host ===
+echo
+echo "[*] Checking for required tools..."
+for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo
+    echo "[!] $cmd is not installed. Attempting to install..."
+    apt-get update
+    if [ "$cmd" = "7z" ]; then
+      apt-get install -y p7zip-full
+    elif [ "$cmd" = "unsquashfs" ]; then
+      apt-get install -y squashfs-tools
+    else
+      apt-get install -y "$cmd"
+    fi
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      echo
+      echo "[!] Failed to install $cmd. Please install it manually."
+      read -p "Press Enter to continue..."
+      exit 1
+    fi
+  fi
+done
 
 # === Version check ===
 # Dynamically extract version from this script
@@ -148,9 +178,6 @@ cd "$WORKDIR"
 
 # === Download latest CryptoShred.sh ===
 REMOTE_CRYPTOSHRED_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/CryptoShred.sh"
-echo "[*] Downloading latest CryptoShred.sh..."
-curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$CRYPTOSHRED_SCRIPT"
-
 echo
 echo "[*] Downloading latest CryptoShred.sh..."
 mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
@@ -159,29 +186,6 @@ if ! curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$CRYPTOSHRED_SCRIPT"; then
   echo "[!] Failed to download CryptoShred.sh from $REMOTE_CRYPTOSHRED_URL"
   exit 1
 fi
-
-
-# === Verify required tools are installed on local host ===
-for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo
-    echo "[!] $cmd is not installed. Attempting to install..."
-    apt-get update
-    if [ "$cmd" = "7z" ]; then
-      apt-get install -y p7zip-full
-    elif [ "$cmd" = "unsquashfs" ]; then
-      apt-get install -y squashfs-tools
-    else
-      apt-get install -y "$cmd"
-    fi
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-      echo
-      echo "[!] Failed to install $cmd. Please install it manually."
-      read -p "Press Enter to continue..."
-      exit 1
-    fi
-  fi
-done
 
 # === 1. Download latest Debian LTS netinst/live ISO ===
 echo
@@ -231,14 +235,15 @@ Wants=systemd-udev-settle.service getty@tty1.service
 
 [Service]
 Type=simple
-# Short delay to allow the console and devices to be ready
-ExecStartPre=/bin/sleep 5
+# Slight delay to allow the console and devices to be ready
+ExecStartPre=/bin/sleep 10
 # Run the interactive script; let systemd connect a tty rather than using shell redirection
-ExecStart=/bin/bash -i /usr/bin/CryptoShred.sh
+ExecStart=/bin/bash /usr/bin/CryptoShred.sh
 StandardInput=tty
-TTYPath=/dev/console
+TTYPath=/dev/tty1
 StandardOutput=journal+console
 StandardError=journal+console
+TimeoutStartSec=5m
 Restart=on-failure
 RestartSec=5s
 
@@ -246,9 +251,9 @@ RestartSec=5s
 WantedBy=multi-user.target
 EOF
 
-# Enable service under multi-user.target (more reliable for live systems than sysinit.target)
+# Enable service under multi-user.target (use relative symlink for portability inside image)
 mkdir -p edit/etc/systemd/system/multi-user.target.wants
-ln -sf /etc/systemd/system/cryptoshred.service edit/etc/systemd/system/multi-user.target.wants/cryptoshred.service
+ln -sf ../cryptoshred.service edit/etc/systemd/system/multi-user.target.wants/cryptoshred.service
 cd "$WORKDIR"
 
 # === 5. Chroot actions ===
@@ -314,6 +319,14 @@ fi
 echo
 echo "[*] Rebuilding squashfs..."
 mksquashfs edit iso/live/filesystem.squashfs -noappend -e boot
+
+# Verify the cryptoshred service and its enablement symlink exist in the edit tree
+if [ ! -f "edit/etc/systemd/system/cryptoshred.service" ] || [ ! -L "edit/etc/systemd/system/multi-user.target.wants/cryptoshred.service" ]; then
+  echo
+  echo "[ERROR] cryptoshred.service or its enablement symlink is missing from the edit tree after squashfs rebuild."
+  echo "[ERROR] Please check edit/etc/systemd/system and edit/etc/systemd/system/multi-user.target.wants"
+  exit 1
+fi
 
 # === 8. Rebuild ISO ===
 echo
@@ -382,8 +395,5 @@ echo "[*] Writing ISO to USB ($USBDEV)..."
 dd if="$OUTISO" of="/dev/$USBDEV" bs=4M status=progress oflag=direct conv=fsync
 sync
 
-END_TIME=$(date +%s)
-ELAPSED=$((END_TIME - START_TIME))
 echo
 echo "[+] Done. USB is ready!"
-echo "[*] Total time elapsed: $((ELAPSED / 60)) min $((ELAPSED % 60)) sec"
