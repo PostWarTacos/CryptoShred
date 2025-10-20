@@ -1,20 +1,32 @@
 #!/bin/bash
+
+# If not already running in clean mode, re-exec with clean environment
+if [[ "${CLEAN_ENV:-}" != "1" ]]; then
+  export CLEAN_ENV=1
+  exec env -i TERM="$TERM" HOME="$HOME" PATH="$PATH" USER="$USER" CLEAN_ENV=1 bash --noprofile --norc "$0" "$@"
+fi
+
 clear
 
+# Debugging output
+# Uncomment the following lines to enable persistent logging
+# This will create a log file in /var/log/cryptoshred with timestamped entries
+# This is useful for debugging and inspecting runs after the system has booted
+
 # Persistent logging so we can inspect live runs after first boot
-LOGDIR="/var/log/cryptoshred"
-mkdir -p "$LOGDIR"
-LOGFILE="$LOGDIR/cryptoshred-$(date +%Y%m%d-%H%M%S).log"
+# LOGDIR="/var/log/cryptoshred"
+# mkdir -p "$LOGDIR"
+# LOGFILE="$LOGDIR/cryptoshred-$(date +%Y%m%d-%H%M%S).log"
 # Redirect stdout/stderr to logfile while still echoing to console when possible
-exec > >(tee -a "$LOGFILE") 2>&1
+# exec > >(tee -a "$LOGFILE") 2>&1
 
-echo
-echo "[LOGFILE] $LOGFILE"
-echo "[INFO] Invoked by: $(whoami)"
-echo "[INFO] Shell: $SHELL"
-echo
+# echo
+# echo "[LOGFILE] $LOGFILE"
+# echo "[INFO] Invoked by: $(whoami)"
+# echo "[INFO] Shell: $SHELL"
+# echo
 
-# Helper: prompt and wait for Enter. Reads from /dev/tty if available so it works
+# Prompt and wait for Enter. Reads from /dev/tty if available so it works
 # when this script is run under systemd with a console attached.
 prompt_enter() {
   local prompt="${1:-Press Enter to continue...}"
@@ -27,7 +39,7 @@ prompt_enter() {
   fi
 }
 
-# Helper: prompt for input and print the response. Caller should capture output.
+# Prompt for input and print the response. Caller should capture output.
 prompt_read() {
   local prompt="${1:-}"
   local input
@@ -57,49 +69,60 @@ echo "Identifying boot device..."
 # Try overlay root, then fallback to live medium, then fallback to first mounted disk
 ROOT_PART=$(findmnt -no SOURCE /)
 if [[ "$ROOT_PART" == "overlay" ]]; then
-  echo "First trigger"
   LIVE_MEDIUM=$(mount | grep -E '/run/live/medium|/mnt/live' | awk '{print $1}' | head -n1)
   BOOT_DISK=$(lsblk -no PKNAME "$LIVE_MEDIUM" 2>/dev/null)
   # Fallback: If still empty, use first disk with a mountpoint
   if [[ -z "$BOOT_DISK" ]]; then
-    echo "Second trigger"
     BOOT_DISK=$(lsblk -ndo NAME,MOUNTPOINT,TYPE | awk '$2!="" && $3=="disk"{print $1}' | head -n1)
   fi
 else
-  echo "Third trigger"
   BOOT_DISK=$(lsblk -no PKNAME "$ROOT_PART" 2>/dev/null)
   if [[ -z "$BOOT_DISK" && "$ROOT_PART" =~ ^/dev/([a-zA-Z0-9]+) ]]; then
     BOOT_DISK="${BASH_REMATCH[1]}"
   fi
 fi
 
-echo "DEBUG: ROOT_PART='$ROOT_PART'"
-echo "DEBUG: LIVE_MEDIUM='$LIVE_MEDIUM'"
-echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
+# Debugging output
+# echo "DEBUG: ROOT_PART='$ROOT_PART'"
+# echo "DEBUG: LIVE_MEDIUM='$LIVE_MEDIUM'"
+# echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
 
 prompt_enter "Press Enter to continue..."
 
 # List all block devices of type "disk", excluding the boot device
 AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOT_DISK$")
-echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
-echo "DEBUG: AVAILABLE_DISKS='$AVAILABLE_DISKS'"
-echo
+# Debugging output
+# echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
+# echo "DEBUG: AVAILABLE_DISKS='$AVAILABLE_DISKS'"
 if [[ -z "$AVAILABLE_DISKS" ]]; then
+  echo
   echo "ERROR: No available local drives found."
   exit 1
 fi
-echo
-echo "Available local drives:"
-for disk in $AVAILABLE_DISKS; do
-    size=$(lsblk -ndo SIZE /dev/$disk)
-    model=$(lsblk -ndo MODEL /dev/$disk)
-    echo "  /dev/$disk  $size  $model"
-done
-echo
 
 # Prompt user to select a device
 # Loop until a valid device is selected
 while true; do
+  # Display drives directly to /dev/tty to avoid buffering issues with tee
+  if [ -e /dev/tty ]; then
+    echo > /dev/tty
+    echo "Available local drives:" > /dev/tty
+    for disk in $AVAILABLE_DISKS; do
+        size=$(lsblk -ndo SIZE /dev/$disk)
+        model=$(lsblk -ndo MODEL /dev/$disk)
+        echo "  /dev/$disk  $size  $model" > /dev/tty
+    done
+    echo > /dev/tty
+  else
+    echo
+    echo "Available local drives:"
+    for disk in $AVAILABLE_DISKS; do
+        size=$(lsblk -ndo SIZE /dev/$disk)
+        model=$(lsblk -ndo MODEL /dev/$disk)
+        echo "  /dev/$disk  $size  $model"
+    done
+    echo
+  fi
   DEV=$(prompt_read "Enter the device to encrypt (e.g., sdb, nvme0n1): ")
   if echo "$AVAILABLE_DISKS" | grep -qx "$DEV"; then
     break
