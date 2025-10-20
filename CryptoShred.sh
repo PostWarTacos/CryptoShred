@@ -1,12 +1,6 @@
 #!/bin/bash
 # CryptoShred.sh - Securely encrypt and destroy key
-# Version 1.4 - 2025-10-01
-
-# If not already running in clean mode, re-exec with clean environment
-if [[ "${CLEAN_ENV:-}" != "1" ]]; then
-  export CLEAN_ENV=1
-  exec env -i TERM="$TERM" HOME="$HOME" PATH="$PATH" USER="$USER" CLEAN_ENV=1 bash --noprofile --norc "$0" "$@"
-fi
+# Version 1.4 - 2025-10-20
 
 clear
 
