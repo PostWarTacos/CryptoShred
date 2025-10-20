@@ -3,7 +3,7 @@
 # DO NOT USE RELATIVE PATHS
 # sudo -i bash -lc 'exec 3>/tmp/build-trace.log; export BASH_XTRACEFD=3; export PS4="+ $(date +%H:%M:%S) ${BASH_SOURCE}:${LINENO}: "; DEBUG=1 /home/matt/Documents/CryptoShred/BuildCryptoShred.sh'
 # Replace matt with your username and adjust path as needed.
-# Version 1.5 - 2025-10-02
+# Version 1.6 - 2025-10-02
 
 set -euo pipefail
 clear
