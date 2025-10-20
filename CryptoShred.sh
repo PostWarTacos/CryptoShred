@@ -1,4 +1,6 @@
 #!/bin/bash
+# CryptoShred.sh - Securely encrypt and destroy key
+# Version 1.4 - 2025-10-01
 
 # If not already running in clean mode, re-exec with clean environment
 if [[ "${CLEAN_ENV:-}" != "1" ]]; then
@@ -56,7 +58,7 @@ prompt_read() {
 echo "==========================================================================================="
 echo
 echo "CryptoShred - Securely encrypt and destroy key"
-echo "Version 1.3 - 2025-10-01"  
+echo "Version 1.4 - 2025-10-01"  
 echo "This script will encrypt an entire local drive with a random key, making all data"
 echo "on it permanently inaccessible. It supports both Opal hardware encryption (if"
 echo "available) and software LUKS2 encryption as a fallback."
