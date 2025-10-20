@@ -245,37 +245,7 @@ mkdir -p edit/usr/bin
 cp -- "$CRYPTOSHRED_SCRIPT" "edit/usr/bin/CryptoShred.sh"
 chmod 755 "edit/usr/bin/CryptoShred.sh"
 
-# Create a debug wrapper script
-cat > edit/usr/bin/CryptoShred-debug.sh <<'EOF'
-#!/bin/bash
-echo "=== CryptoShred Debug Wrapper Started ===" > /dev/tty1
-echo "Date: $(date)" > /dev/tty1
-echo "User: $(whoami)" > /dev/tty1
-echo "PATH: $PATH" > /dev/tty1
-echo "Working directory: $(pwd)" > /dev/tty1
-echo "" > /dev/tty1
 
-# Check if CryptoShred.sh exists and is executable
-if [ ! -f /usr/bin/CryptoShred.sh ]; then
-    echo "ERROR: /usr/bin/CryptoShred.sh not found!" > /dev/tty1
-    read -p "Press Enter to continue..." > /dev/tty1 < /dev/tty1
-    exit 1
-fi
-
-if [ ! -x /usr/bin/CryptoShred.sh ]; then
-    echo "ERROR: /usr/bin/CryptoShred.sh not executable!" > /dev/tty1
-    read -p "Press Enter to continue..." > /dev/tty1 < /dev/tty1
-    exit 1
-fi
-
-echo "Launching CryptoShred.sh..." > /dev/tty1
-echo "" > /dev/tty1
-
-# Run with error handling
-set -e
-exec /usr/bin/CryptoShred.sh
-EOF
-chmod 755 edit/usr/bin/CryptoShred-debug.sh
 
 # === 4. Create and enable service ===
 echo
@@ -283,34 +253,30 @@ echo "[*] Creating CryptoShred service..."
 cat > edit/etc/systemd/system/cryptoshred.service <<'EOF'
 [Unit]
 Description=CryptoShred autorun (first-boot)
-After=systemd-udev-settle.service local-fs.target multi-user.target
+After=systemd-udev-settle.service local-fs.target
 Wants=systemd-udev-settle.service
 DefaultDependencies=no
 
 [Service]
 Type=oneshot
 # Wait for system to be fully ready
-ExecStartPre=/bin/sleep 15
+ExecStartPre=/bin/sleep 12
 # Stop getty on tty1 to free it up
 ExecStartPre=-/bin/systemctl stop getty@tty1.service
-# Use debug wrapper that handles errors and logging
-ExecStart=/bin/bash -c 'if ! /usr/bin/CryptoShred-debug.sh </dev/tty1 >/dev/tty1 2>&1; then echo "CryptoShred failed! Dropping to shell..." > /dev/tty1; /bin/bash </dev/tty1 >/dev/tty1 2>&1; fi'
-# Restart getty after script completes (use - prefix to ignore failure)
+# Run CryptoShred with proper TTY
+ExecStart=/bin/bash -c '/usr/bin/CryptoShred.sh </dev/tty1 >/dev/tty1 2>&1'
+# Restart getty after script completes
 ExecStartPost=-/bin/systemctl start getty@tty1.service
-TimeoutStartSec=30m
+TimeoutStartSec=20m
 RemainAfterExit=no
-StandardInput=tty
-StandardOutput=tty
-StandardError=tty
-TTYPath=/dev/tty1
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Enable service under sysinit.target (use relative symlink for portability inside image)
-mkdir -p edit/etc/systemd/system/sysinit.target.wants
-ln -sf ../cryptoshred.service edit/etc/systemd/system/sysinit.target.wants/cryptoshred.service
+# Enable service under multi-user.target (use relative symlink for portability inside image)
+mkdir -p edit/etc/systemd/system/multi-user.target.wants
+ln -sf ../cryptoshred.service edit/etc/systemd/system/multi-user.target.wants/cryptoshred.service
 cd "$WORKDIR"
 
 # === 5. Chroot actions ===
@@ -378,10 +344,10 @@ echo "[*] Rebuilding squashfs..."
 mksquashfs edit iso/live/filesystem.squashfs -noappend -e boot
 
 # Verify the cryptoshred service and its enablement symlink exist in the edit tree
-if [ ! -f "edit/etc/systemd/system/cryptoshred.service" ] || [ ! -L "edit/etc/systemd/system/sysinit.target.wants/cryptoshred.service" ]; then
+if [ ! -f "edit/etc/systemd/system/cryptoshred.service" ] || [ ! -L "edit/etc/systemd/system/multi-user.target.wants/cryptoshred.service" ]; then
   echo
   echo "[ERROR] cryptoshred.service or its enablement symlink is missing from the edit tree after squashfs rebuild."
-  echo "[ERROR] Please check edit/etc/systemd/system and edit/etc/systemd/system/sysinit.target.wants"
+  echo "[ERROR] Please check edit/etc/systemd/system and edit/etc/systemd/system/multi-user.target.wants"
   exit 1
 fi
 
