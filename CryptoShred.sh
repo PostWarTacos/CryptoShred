@@ -1,5 +1,30 @@
 #!/bin/bash
+
+# If not already running in clean mode, re-exec with clean environment
+if [[ "${CLEAN_ENV:-}" != "1" ]]; then
+  export CLEAN_ENV=1
+  exec env -i TERM="$TERM" HOME="$HOME" PATH="$PATH" USER="$USER" CLEAN_ENV=1 bash --noprofile --norc "$0" "$@"
+fi
+
 clear
+
+# Debugging output
+# Uncomment the following lines to enable persistent logging
+# This will create a log file in /var/log/cryptoshred with timestamped entries
+# This is useful for debugging and inspecting runs after the system has booted
+
+# Persistent logging so we can inspect live runs after first boot
+# LOGDIR="/var/log/cryptoshred"
+# mkdir -p "$LOGDIR"
+# LOGFILE="$LOGDIR/cryptoshred-$(date +%Y%m%d-%H%M%S).log"
+# Redirect stdout/stderr to logfile while still echoing to console when possible
+# exec > >(tee -a "$LOGFILE") 2>&1
+
+# echo
+# echo "[LOGFILE] $LOGFILE"
+# echo "[INFO] Invoked by: $(whoami)"
+# echo "[INFO] Shell: $SHELL"
+# echo
 
 # Prompt and wait for Enter. Reads from /dev/tty if available so it works
 # when this script is run under systemd with a console attached.
@@ -31,7 +56,7 @@ prompt_read() {
 echo "==========================================================================================="
 echo
 echo "CryptoShred - Securely encrypt and destroy key"
-echo "Version 1.5 - 2025-10-20"
+echo "Version 1.3 - 2025-10-01"  
 echo "This script will encrypt an entire local drive with a random key, making all data"
 echo "on it permanently inaccessible. It supports both Opal hardware encryption (if"
 echo "available) and software LUKS2 encryption as a fallback."
