@@ -136,6 +136,7 @@ while true; do
   if [[ "$CONFIRM" == "YES" ]]; then
     break
   elif [[ "${CONFIRM,,}" == "y" || "${CONFIRM,,}" == "yes" ]]; then
+    echo "You must type 'YES' in capital letters to confirm."
     prompt_enter "Press Enter to continue..."
     clear
     continue
