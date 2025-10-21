@@ -1,9 +1,9 @@
 #!/bin/bash
+
 # RUN THIS SCRIPT WITH THE EXACT COMMAND BELOW
 # DO NOT USE RELATIVE PATHS
 # sudo -i bash -lc 'exec 3>/tmp/build-trace.log; export BASH_XTRACEFD=3; export PS4="+ $(date +%H:%M:%S) ${BASH_SOURCE}:${LINENO}: "; DEBUG=1 /home/matt/Documents/CryptoShred/BuildCryptoShred.sh'
 # Replace matt with your username and adjust path as needed.
-# Version 1.5 - 2025-10-02
 
 set -euo pipefail
 clear
@@ -99,44 +99,51 @@ for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
   fi
 done
 
-# === Version check ===
-# # Dynamically extract version from this script
-# SCRIPT_VERSION=$(grep -m1 -oP 'Version\s+\K[0-9\. -]+' "$0")
+# === Hash-based update check (DISABLED) ===
+# Uncomment the following section to enable hash-based auto-updating
 # REMOTE_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/BuildCryptoShred.sh"
 
-# # Download remote script to temp file and extract version
-# echo
-# echo "[*] Checking for latest BuildCryptoShred.sh version online..."
-# REMOTE_SCRIPT="$(mktemp)"
-# curl -s "$REMOTE_URL" -o "$REMOTE_SCRIPT"
-# REMOTE_VERSION=$(grep -m1 -oP 'Version\s+\K[0-9\. -]+' "$REMOTE_SCRIPT")
+# # Calculate hash of current script
+# LOCAL_HASH=$(sha256sum "$0" | cut -d' ' -f1)
 
-# # Compare versions
-# if [ "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]; then
-#   echo
-#   echo "[!] Local script version ($SCRIPT_VERSION) does not match latest online version ($REMOTE_VERSION)."
-#   echo "    Updating local script with the latest version..."
-#   cp "$REMOTE_SCRIPT" "$0"
-#   echo
-#   echo "[+] Script updated. Please re-run BuildCryptoShred.sh."
+# # Download remote script to temp file and calculate its hash
+# echo
+# echo "[*] Checking for BuildCryptoShred.sh updates using hash comparison..."
+# REMOTE_SCRIPT="$(mktemp)"
+# if curl -s "$REMOTE_URL" -o "$REMOTE_SCRIPT"; then
+#   REMOTE_HASH=$(sha256sum "$REMOTE_SCRIPT" | cut -d' ' -f1)
+#   
+#   # Compare hashes
+#   if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
+#     echo
+#     echo "[!] Local script hash differs from remote version."
+#     echo "    Local:  $LOCAL_HASH"
+#     echo "    Remote: $REMOTE_HASH"
+#     echo "    Updating local script with the latest version..."
+#     cp "$REMOTE_SCRIPT" "$0"
+#     echo
+#     echo "[+] Script updated. Please re-run BuildCryptoShred.sh."
+#     rm "$REMOTE_SCRIPT"
+#     exit 0
+#   else
+#     echo "[+] BuildCryptoShred.sh is up to date (hash: ${LOCAL_HASH:0:16}...)"
+#   fi
 #   rm "$REMOTE_SCRIPT"
-#   exit 0
+# else
+#   echo "[!] Warning: Could not download remote script for comparison. Continuing with local version."
 # fi
-# rm "$REMOTE_SCRIPT"
 
 # === Main script ===
 echo
 echo "================================================= CryptoShred ISO Builder ================================================="
 echo
 echo "CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed"
-echo "Version 1.5 - 2025-10-02"
+echo "Version 1.6 - 2025-10-02"
 echo
 echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
 echo "The resulting ISO will be written directly to the specified USB device."
 echo "Make sure to change the USB device and script are in place before proceeding."
 echo "WARNING: This will ERASE ALL DATA on the specified USB device."
-
-# === User verification step ===
 echo
 echo "IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in."
 echo
@@ -203,28 +210,71 @@ fi
 chmod 700 "$WORKDIR"
 cd "$WORKDIR"
 
-# === Download latest CryptoShred.sh ===
+# === Hash-based CryptoShred.sh update check (DISABLED) ===
+# Uncomment the following section to enable hash-based CryptoShred.sh checking
 # REMOTE_CRYPTOSHRED_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/CryptoShred.sh"
+# LOCAL_CRYPTOSHRED="$(dirname "$0")/CryptoShred.sh"
+
 # echo
-# echo "[*] Downloading latest CryptoShred.sh..."
-# mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
-# if ! curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$CRYPTOSHRED_SCRIPT"; then
-#   echo
-#   echo "[!] Failed to download CryptoShred.sh from $REMOTE_CRYPTOSHRED_URL"
-#   exit 1
+# echo "[*] Checking CryptoShred.sh for updates using hash comparison..."
+
+# # Check if local file exists
+# if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
+#   echo "[!] Local CryptoShred.sh not found at $LOCAL_CRYPTOSHRED"
+#   echo "[*] Downloading from remote..."
+#   mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
+#   if ! curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$CRYPTOSHRED_SCRIPT"; then
+#     echo "[!] Failed to download CryptoShred.sh from $REMOTE_CRYPTOSHRED_URL"
+#     exit 1
+#   fi
+# else
+#   # Calculate hash of local CryptoShred.sh
+#   LOCAL_CS_HASH=$(sha256sum "$LOCAL_CRYPTOSHRED" | cut -d' ' -f1)
+#   
+#   # Download remote version and calculate its hash
+#   REMOTE_CS_TEMP="$(mktemp)"
+#   if curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$REMOTE_CS_TEMP"; then
+#     REMOTE_CS_HASH=$(sha256sum "$REMOTE_CS_TEMP" | cut -d' ' -f1)
+#     
+#     # Compare hashes
+#     if [ "$LOCAL_CS_HASH" != "$REMOTE_CS_HASH" ]; then
+#       echo "[!] Local CryptoShred.sh differs from remote version."
+#       echo "    Local:  $LOCAL_CS_HASH"
+#       echo "    Remote: $REMOTE_CS_HASH"  
+#       echo "[*] Using remote version for this build..."
+#       mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
+#       cp "$REMOTE_CS_TEMP" "$CRYPTOSHRED_SCRIPT"
+#     else
+#       echo "[+] CryptoShred.sh is up to date (hash: ${LOCAL_CS_HASH:0:16}...)"
+#       echo "[*] Using local version..."
+#       mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
+#       cp "$LOCAL_CRYPTOSHRED" "$CRYPTOSHRED_SCRIPT"
+#     fi
+#     rm "$REMOTE_CS_TEMP"
+#   else
+#     echo "[!] Warning: Could not download remote CryptoShred.sh for comparison."
+#     echo "[*] Using local version..."
+#     mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
+#     cp "$LOCAL_CRYPTOSHRED" "$CRYPTOSHRED_SCRIPT"
+#   fi
 # fi
 
-# === Copy local CryptoShred.sh to workdir ===
-echo
-echo "[*] Copying local CryptoShred.sh to workdir..."
+# === Simple local copy approach ===
 LOCAL_CRYPTOSHRED="$(dirname "$0")/CryptoShred.sh"
+
+echo
+echo "[*] Using local CryptoShred.sh from directory..."
+
+# Check if local file exists
 if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
-  echo
-  echo "[!] Local CryptoShred.sh not found at $LOCAL_CRYPTOSHRED. Aborting."
+  echo "[!] Error: Local CryptoShred.sh not found at $LOCAL_CRYPTOSHRED"
+  echo "[!] Please ensure CryptoShred.sh is in the same directory as BuildCryptoShred.sh"
   exit 1
 fi
+
+echo "[+] Found local CryptoShred.sh"
 mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
-cp -- "$LOCAL_CRYPTOSHRED" "$CRYPTOSHRED_SCRIPT"
+cp "$LOCAL_CRYPTOSHRED" "$CRYPTOSHRED_SCRIPT"
 
 # === 1. Download latest Debian LTS netinst/live ISO ===
 echo
@@ -268,19 +318,19 @@ Wants=systemd-udev-settle.service
 DefaultDependencies=no
 
 [Service]
-Type=oneshot
+Type=simple
+Restart=always
+RestartSec=5
 # Wait for system to be fully ready
 ExecStartPre=/bin/sleep 15
 # Stop getty on tty1 to free it up  
 ExecStartPre=-/bin/systemctl stop getty@tty1.service
-# Run script with failure recovery - if it fails, show error and restart getty
-ExecStart=/bin/bash -c 'export SYSTEMD_EXEC_PID=$$; export NO_CLEAN_ENV=1; export TERM=linux; if ! /usr/bin/CryptoShred.sh </dev/tty1 >/dev/tty1 2>&1; then echo "=== CRYPTOSHRED FAILED - Check USB and reboot ===" > /dev/tty1; echo "System will restart getty in 30 seconds..." > /dev/tty1; sleep 30; fi'
-# Always restart getty on completion or failure
-ExecStartPost=-/bin/systemctl start getty@tty1.service
+# Run script in a loop - restart after each completion to allow multiple disk shredding
+ExecStart=/bin/bash -c 'export SYSTEMD_EXEC_PID=$$; export NO_CLEAN_ENV=1; export TERM=linux; while true; do echo; echo "[*] CryptoShred ready for next disk..."; echo; if ! /usr/bin/CryptoShred.sh </dev/tty1 >/dev/tty1 2>&1; then echo "=== CRYPTOSHRED FAILED - Check USB and reboot ===" > /dev/tty1; echo "System will restart in 30 seconds..." > /dev/tty1; sleep 30; break; fi; echo; echo "[+] Drive shredding completed. Insert another drive to continue or reboot to exit."; echo; sleep 10; done'
 # If service fails completely, still try to restart getty
 ExecStopPost=-/bin/systemctl start getty@tty1.service
 TimeoutStartSec=25m
-RemainAfterExit=no
+TimeoutStopSec=30s
 
 [Install]
 WantedBy=sysinit.target
