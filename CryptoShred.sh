@@ -176,9 +176,19 @@ echo
 echo  "Checking for Opal hardware encryption support..."
 if cryptsetup luksFormat --hw-opal-only --test-passphrase /dev/$DEV 2>/dev/null; then
     echo "Opal-compatible drive detected. Using hardware encryption..."
-    sudo cryptsetup luksFormat /dev/$DEV --hw-opal-only --batch-mode
-    echo "Opal encryption enabled on /dev/$DEV."
-    echo "No filesystem created, drive encrypts transparently."
+    if sudo cryptsetup luksFormat /dev/$DEV --hw-opal-only --batch-mode; then
+        echo "SUCCESS: Opal encryption enabled on /dev/$DEV."
+        echo "No filesystem created, drive encrypts transparently."
+        echo "Data is permanently inaccessible."
+        echo
+        prompt_enter "Press Enter to continue..."
+        clear
+        exit 0
+    else
+        echo "ERROR: Failed to enable Opal encryption on /dev/$DEV!"
+        echo "Falling back to software LUKS2..."
+        echo
+    fi
 else # Fallback to LUKS2
   # Use it to format the drive (batch mode avoids the YES prompt, already have YES prompt above)
   echo "Opal not supported. Falling back to software LUKS2 (AES-XTS)."
