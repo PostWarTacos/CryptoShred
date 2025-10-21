@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# ENVIRONMENT SETUP AND INITIALIZATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 # If not already running in clean mode, re-exec with clean environment
 # Skip clean env re-exec when running under systemd to avoid issues
 if [[ "${CLEAN_ENV:-}" != "1" ]] && [[ -z "${SYSTEMD_EXEC_PID:-}" ]] && [[ "${NO_CLEAN_ENV:-}" != "1" ]]; then
@@ -32,6 +36,10 @@ export TERM="${TERM:-linux}"
 # echo "[INFO] Shell: $SHELL"
 # echo
 
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# HELPER FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 # Prompt and wait for Enter. USB/live environment friendly - no /dev/tty dependency.
 prompt_enter() {
   local prompt="${1:-Press Enter to continue...}"
@@ -48,6 +56,10 @@ prompt_read() {
   printf '%s' "$input"
 }
 
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# WELCOME AND INTRODUCTION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 echo "==========================================================================================="
 echo
 echo "CryptoShred - Securely encrypt and destroy key"
@@ -59,6 +71,9 @@ echo
 echo "==========================================================================================="
 echo
 
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# BOOT DEVICE DETECTION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo "Identifying boot device..."
 # Try overlay root, then fallback to live medium, then fallback to first mounted disk
@@ -83,6 +98,10 @@ fi
 # echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
 
 prompt_enter "Press Enter to continue..."
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# DEVICE SELECTION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # List all block devices of type "disk", excluding the boot device
 AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOT_DISK$")
@@ -117,6 +136,10 @@ while true; do
   clear
 done
 
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# SAFETY CHECKS AND CONFIRMATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 # Disable all swap
 # This is important before wiping a drive to prevent any swap partitions from being in use
 # and to ensure no data remnants remain in swap
@@ -149,28 +172,57 @@ while true; do
   fi
 done
 
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# DEVICE PREPARATION AND SIGNATURE REMOVAL
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 # Ensure the drive is not mounted or in use
 echo "Cleaning up any mounts on /dev/$DEV..."
-sudo umount /dev/${DEV}? 2>/dev/null
-sudo umount -l /dev/$DEV* 2>/dev/null
-sudo wipefs -a /dev/$DEV
+sudo umount /dev/${DEV}? 2>/dev/null || true
+sudo umount -l /dev/$DEV* 2>/dev/null || true
 
 # (Optional) Uncomment to overwrite the entire device with random data (slow):
 # sudo dd if=/dev/urandom of=/dev/$DEV bs=10M status=progress
 
-# Quick wipe of headers and edges before encryption
-# This helps prevent recovery of any plaintext remnants, 
-# prevents discovery of old partitions, and ensures no old signatures 
-# interfere with encryption setup (e.g., old RAID, LVM, filesystem signatures)
-
+# Comprehensive device preparation to remove ALL signatures
+# This is critical for avoiding "device already contains signature" errors
 echo
-echo "Wiping old signatures and headers on /dev/$DEV..."
-echo "Overwriting first 100MB..."
-sudo dd if=/dev/urandom of=/dev/$DEV bs=1M count=100 status=none 2>/dev/null
-echo "Overwriting last 100MB..."
+echo "Preparing device /dev/$DEV for encryption..."
+
+# Step 1: Wipe filesystem and partition signatures first
+echo "Removing all filesystem and partition signatures..."
+sudo wipefs -af /dev/$DEV 2>/dev/null || true
+
+# Step 2: Zero out partition table areas specifically (handles GPT primary and backup)
+echo "Zeroing partition table areas..."
+# Clear first 1MB (MBR + GPT primary header)
+sudo dd if=/dev/zero of=/dev/$DEV bs=1M count=1 status=none 2>/dev/null || true
+# Clear last 1MB (GPT backup header)
+DEVICE_SIZE=$(sudo blockdev --getsz /dev/$DEV)
+LAST_MB_OFFSET=$(( (DEVICE_SIZE * 512 - 1048576) / 512 ))
+sudo dd if=/dev/zero of=/dev/$DEV bs=512 count=2048 seek=$LAST_MB_OFFSET status=none 2>/dev/null || true
+
+# Step 3: Wipe additional headers and edges with random data
+echo "Overwriting first 100MB with random data..."
+sudo dd if=/dev/urandom of=/dev/$DEV bs=1M count=100 status=none 2>/dev/null || true
+echo "Overwriting last 100MB with random data..."
 sudo dd if=/dev/urandom of=/dev/$DEV bs=1M count=100 \
-  seek=$(( $(blockdev --getsz /dev/$DEV) / 2048 - 100 )) status=none 2>/dev/null
-echo "Wipe first and last 100MB complete."
+  seek=$(( DEVICE_SIZE / 2048 - 100 )) status=none 2>/dev/null || true
+
+# Step 4: Final signature cleanup
+echo "Final signature cleanup..."
+sudo wipefs -af /dev/$DEV 2>/dev/null || true
+
+# Step 5: Force kernel to re-read the device
+echo "Refreshing kernel device information..."
+sudo partprobe /dev/$DEV 2>/dev/null || true
+sudo udevadm settle 2>/dev/null || true
+
+echo "Device preparation complete."
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# OPAL HARDWARE ENCRYPTION ATTEMPT
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # Try Opal first
 echo
@@ -190,9 +242,15 @@ if cryptsetup luksFormat --hw-opal-only --test-passphrase /dev/$DEV 2>/dev/null;
         echo "Falling back to software LUKS2..."
         echo
     fi
-else # Fallback to LUKS2
-  # Use it to format the drive (batch mode avoids the YES prompt, already have YES prompt above)
+else 
   echo "Opal not supported. Falling back to software LUKS2 (AES-XTS)."
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# LUKS2 SOFTWARE ENCRYPTION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+# Use it to format the drive (batch mode avoids the YES prompt, already have YES prompt above)
  
   # Create a strong random key and pipe it straight into cryptsetup (no file)
   # Adjust pbkdf/argon2 parameters to taste for speed vs cost.
@@ -232,6 +290,9 @@ else # Fallback to LUKS2
     clear
     exit 1
   fi
-fi
 
-# The entire drive’s contents are now cryptographically irretrievable.
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# COMPLETION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+# The entire drive's contents are now cryptographically irretrievable.
