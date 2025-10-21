@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# EXECUTION COMMAND AND INITIAL SETUP
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 # RUN THIS SCRIPT WITH THE EXACT COMMAND BELOW
 # DO NOT USE RELATIVE PATHS
 # sudo -i bash -lc 'exec 3>/tmp/build-trace.log; export BASH_XTRACEFD=3; export PS4="+ $(date +%H:%M:%S) ${BASH_SOURCE}:${LINENO}: "; DEBUG=1 /home/matt/Documents/CryptoShred/BuildCryptoShred.sh'
@@ -7,6 +11,10 @@
 
 set -euo pipefail
 clear
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# SHELL AND ENVIRONMENT DETECTION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # Detect inherited shell xtrace (-x) and disable it here. We'll enable tracing
 # later after the logfile is configured if DEBUG=1 or HONOR_SHELL_XTRACE=1.
@@ -26,6 +34,10 @@ if [ -z "${BASH_VERSION:-}" ]; then
     exit 1
   fi
 fi
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# DEBUGGING AND LOGGING SETUP (DISABLED)
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # Debugging output
 # Create a logfile to capture the full run for debugging (timestamped)
@@ -51,12 +63,20 @@ fi
 #   set -x
 # fi
 
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# ROOT PERMISSION CHECK
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 if [ "$EUID" -ne 0 ]; then
   echo
   echo "[!] Please run this script as root (sudo)."
   echo
   exit 1
 fi
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# TIMING AND CLEANUP SETUP
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # Record start time
 START_TIME=$(date +%s)
@@ -74,6 +94,10 @@ finish() {
   echo "[TIME] Elapsed: $((ELAPSED / 60)) min $((ELAPSED % 60)) sec"
 }
 trap finish EXIT
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# DEPENDENCY VERIFICATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # === Verify required tools are installed on local host ===
 echo
@@ -98,6 +122,10 @@ for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
     fi
   fi
 done
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# UPDATE CHECKING (DISABLED)
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # === Hash-based update check (DISABLED) ===
 # Uncomment the following section to enable hash-based auto-updating
@@ -133,7 +161,10 @@ done
 #   echo "[!] Warning: Could not download remote script for comparison. Continuing with local version."
 # fi
 
-# === Main script ===
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# INTRODUCTION AND USER CONFIRMATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 echo
 echo "================================================= CryptoShred ISO Builder ================================================="
 echo
@@ -151,7 +182,10 @@ echo "==========================================================================
 echo
 read -p "Press Enter to continue..."
 
-# === Config ===
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# CONFIGURATION AND SETUP
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 # Get the real user's home directory (not root's when using sudo)
 if [ -n "${SUDO_USER:-}" ]; then
   REAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
@@ -195,7 +229,10 @@ while true; do
   clear
 done
 
-# === Prep Working Directory ===
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# WORKSPACE PREPARATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 echo
 echo "[*] Cleaning old build dirs..."
 if [ -d "$WORKDIR" ]; then
@@ -209,6 +246,10 @@ if [ -n "${SUDO_USER:-}" ] && getent passwd "$SUDO_USER" >/dev/null 2>&1; then
 fi
 chmod 700 "$WORKDIR"
 cd "$WORKDIR"
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# CRYPTOSHRED SCRIPT PREPARATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # === Hash-based CryptoShred.sh update check (DISABLED) ===
 # Uncomment the following section to enable hash-based CryptoShred.sh checking
@@ -276,7 +317,10 @@ echo "[+] Found local CryptoShred.sh"
 mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
 cp "$LOCAL_CRYPTOSHRED" "$CRYPTOSHRED_SCRIPT"
 
-# === 1. Download latest Debian LTS netinst/live ISO ===
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# DEBIAN ISO DOWNLOAD
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 echo
 echo "[*] Fetching latest Debian ISO link..."
 ISO_URL=$(curl -s "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | 
@@ -284,7 +328,10 @@ ISO_URL=$(curl -s "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-h
 echo "[*] Downloading $ISO_URL..."
 wget -q --show-progress "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/$ISO_URL" -O debian.iso
 
-# === 2. Extract ISO contents ===
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# ISO EXTRACTION AND MODIFICATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 echo
 echo "[*] Extracting ISO..."
 7z x debian.iso -oiso >/dev/null
@@ -296,7 +343,10 @@ unsquashfs iso/live/filesystem.squashfs
 mv squashfs-root/* edit
 rm -rf squashfs-root
 
-# === 3. Copy CryptoShred.sh directly to /usr/bin in the chroot ===
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# CRYPTOSHRED INTEGRATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 echo "[*] Copying CryptoShred.sh to usr/bin..."
 if [ ! -f "$CRYPTOSHRED_SCRIPT" ]; then
   echo
@@ -307,7 +357,10 @@ mkdir -p edit/usr/bin
 cp -- "$CRYPTOSHRED_SCRIPT" "edit/usr/bin/CryptoShred.sh"
 chmod 755 "edit/usr/bin/CryptoShred.sh"
 
-# === 4. Create and enable service ===
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# SYSTEMD SERVICE CREATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 echo
 echo "[*] Creating CryptoShred service..."
 cat > edit/etc/systemd/system/cryptoshred.service <<'EOF'
@@ -341,7 +394,10 @@ mkdir -p edit/etc/systemd/system/sysinit.target.wants
 ln -sf ../cryptoshred.service edit/etc/systemd/system/sysinit.target.wants/cryptoshred.service
 cd "$WORKDIR"
 
-# === 5. Chroot actions ===
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# CHROOT ENVIRONMENT SETUP
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 echo
 echo "[*] Mounting for chroot..."
 mount --bind /dev edit/dev
@@ -387,8 +443,10 @@ umount -lf edit/proc || true
 umount -lf edit/sys || true
 umount -lf edit/tmp || true
 
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# GRUB BOOTLOADER CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-# === 6. Modify GRUB config to force first option ===
 echo
 echo "[*] Modifying GRUB config..."
 GRUB_CFG="iso/boot/grub/grub.cfg"
@@ -400,7 +458,10 @@ else
   exit 1
 fi
 
-# === 7. Rebuild squashfs ===
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# SQUASHFS REBUILD
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 echo
 echo "[*] Rebuilding squashfs..."
 mksquashfs edit iso/live/filesystem.squashfs -noappend -e boot
@@ -413,7 +474,10 @@ if [ ! -f "edit/etc/systemd/system/cryptoshred.service" ] || [ ! -L "edit/etc/sy
   exit 1
 fi
 
-# === 8. Rebuild ISO ===
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# ISO BUILDING
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 echo
 echo "[*] Building ISO..."
 # Locate isohdpfx.bin used by isohybrid. Different distros/packages install it in
@@ -474,7 +538,10 @@ XORRISO_ARGS+=( "$ISO_ROOT" )
 echo "[INFO] Running: xorriso ${XORRISO_ARGS[*]}"
 xorriso "${XORRISO_ARGS[@]}"
 
-# === 9. Write ISO to USB ===
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# USB WRITING
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 echo
 echo "[*] Writing ISO to USB ($USBDEV)..."
 dd if="$OUTISO" of="/dev/$USBDEV" bs=4M status=progress oflag=direct conv=fsync
