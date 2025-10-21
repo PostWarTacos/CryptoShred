@@ -1,12 +1,18 @@
 #!/bin/bash
 
 # If not already running in clean mode, re-exec with clean environment
-if [[ "${CLEAN_ENV:-}" != "1" ]]; then
+# Skip clean env re-exec when running under systemd to avoid issues
+if [[ "${CLEAN_ENV:-}" != "1" ]] && [[ -z "${SYSTEMD_EXEC_PID:-}" ]] && [[ "${NO_CLEAN_ENV:-}" != "1" ]]; then
   export CLEAN_ENV=1
-  exec env -i TERM="$TERM" HOME="$HOME" PATH="$PATH" USER="$USER" CLEAN_ENV=1 bash --noprofile --norc "$0" "$@"
+  # Ensure TERM is set before re-execution
+  TERM_VAR="${TERM:-linux}"
+  exec env -i TERM="$TERM_VAR" HOME="$HOME" PATH="$PATH" USER="$USER" CLEAN_ENV=1 bash --noprofile --norc "$0" "$@"
 fi
 
 clear
+
+# Ensure TERM is set for proper terminal handling
+export TERM="${TERM:-linux}"
 
 # Debugging output
 # Uncomment the following lines to enable persistent logging
@@ -26,30 +32,19 @@ clear
 # echo "[INFO] Shell: $SHELL"
 # echo
 
-# Prompt and wait for Enter. Reads from /dev/tty if available so it works
-# when this script is run under systemd with a console attached.
+# Prompt and wait for Enter. USB/live environment friendly - no /dev/tty dependency.
 prompt_enter() {
   local prompt="${1:-Press Enter to continue...}"
-  if [ -e /dev/tty ]; then
-    printf "%s" "$prompt" > /dev/tty
-    read -r _ < /dev/tty
-  else
-    printf "%s" "$prompt"
-    read -r _
-  fi
+  printf "%s" "$prompt" >&2
+  read -r _ 2>/dev/null || true
 }
 
-# Prompt for input and print the response. Caller should capture output.
+# Prompt for input and print the response. USB/live environment friendly - no /dev/tty dependency.
 prompt_read() {
   local prompt="${1:-}"
-  local input
-  if [ -e /dev/tty ]; then
-    printf "%s" "$prompt" > /dev/tty
-    read -r input < /dev/tty
-  else
-    printf "%s" "$prompt"
-    read -r input
-  fi
+  local input=""
+  printf "%s" "$prompt" >&2
+  read -r input 2>/dev/null || input=""
   printf '%s' "$input"
 }
 
@@ -103,26 +98,15 @@ fi
 # Prompt user to select a device
 # Loop until a valid device is selected
 while true; do
-  # Display drives directly to /dev/tty to avoid buffering issues with tee
-  if [ -e /dev/tty ]; then
-    echo > /dev/tty
-    echo "Available local drives:" > /dev/tty
-    for disk in $AVAILABLE_DISKS; do
-        size=$(lsblk -ndo SIZE /dev/$disk)
-        model=$(lsblk -ndo MODEL /dev/$disk)
-        echo "  /dev/$disk  $size  $model" > /dev/tty
-    done
-    echo > /dev/tty
-  else
-    echo
-    echo "Available local drives:"
-    for disk in $AVAILABLE_DISKS; do
-        size=$(lsblk -ndo SIZE /dev/$disk)
-        model=$(lsblk -ndo MODEL /dev/$disk)
-        echo "  /dev/$disk  $size  $model"
-    done
-    echo
-  fi
+  # Display drives - USB/live environment friendly
+  echo
+  echo "Available local drives:"
+  for disk in $AVAILABLE_DISKS; do
+      size=$(lsblk -ndo SIZE /dev/$disk)
+      model=$(lsblk -ndo MODEL /dev/$disk)
+      echo "  /dev/$disk  $size  $model"
+  done
+  echo
   DEV=$(prompt_read "Enter the device to encrypt (e.g., sdb, nvme0n1): ")
   if echo "$AVAILABLE_DISKS" | grep -qx "$DEV"; then
     break
@@ -201,7 +185,9 @@ else # Fallback to LUKS2
  
   # Create a strong random key and pipe it straight into cryptsetup (no file)
   # Adjust pbkdf/argon2 parameters to taste for speed vs cost.
-  head -c 64 /dev/urandom | \
+  echo
+  echo "Creating LUKS2 encryption..."
+  if head -c 64 /dev/urandom | \
     sudo cryptsetup luksFormat /dev/$DEV \
       --type luks2 \
       --pbkdf argon2id \
@@ -209,21 +195,32 @@ else # Fallback to LUKS2
       --pbkdf-parallel 4 \
       --iter-time 5000 \
       --cipher aes-xts-plain64 --key-size 512 \
-      --key-file -
-  
-  # pbkdf-memory - 4GB memory (in KiB): how much RAM is used per guess in brute-force attack
-  # iter-time - 5 seconds (in ms): The minimum time required to spend on each password guess
-  # Together these make brute-force attacks much more costly and slow.
+      --key-file -; then
+    
+    # pbkdf-memory - 4GB memory (in KiB): how much RAM is used per guess in brute-force attack
+    # iter-time - 5 seconds (in ms): The minimum time required to spend on each password guess
+    # Together these make brute-force attacks much more costly and slow.
 
-  echo
-  echo "Drive /dev/$DEV has been encrypted with a random one-time passphrase."
-  echo "Data is permanently inaccessible."
-  echo
-  read -p "Press Enter to continue..."
-  clear
-  # Will return 0 and continue to the end of the script
-  # Which will restart the script to allow another device to be selected
-  exit 0
+    echo
+    echo "SUCCESS: Drive /dev/$DEV has been encrypted with a random one-time passphrase."
+    echo "Data is permanently inaccessible."
+    echo
+    prompt_enter "Press Enter to continue..."
+    clear
+    exit 0
+  else
+    echo
+    echo "ERROR: Failed to encrypt /dev/$DEV!"
+    echo "This could be due to:"
+    echo "  - Hardware I/O errors (drive may be failing)"
+    echo "  - Drive is in use or mounted"
+    echo "  - Insufficient permissions"
+    echo "  - Drive hardware issues"
+    echo
+    prompt_enter "Press Enter to continue..."
+    clear
+    exit 1
+  fi
 fi
 
 # The entire drive’s contents are now cryptographically irretrievable.

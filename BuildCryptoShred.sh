@@ -3,7 +3,7 @@
 # DO NOT USE RELATIVE PATHS
 # sudo -i bash -lc 'exec 3>/tmp/build-trace.log; export BASH_XTRACEFD=3; export PS4="+ $(date +%H:%M:%S) ${BASH_SOURCE}:${LINENO}: "; DEBUG=1 /home/matt/Documents/CryptoShred/BuildCryptoShred.sh'
 # Replace matt with your username and adjust path as needed.
-# Version 1.6 - 2025-10-20
+# Version 1.5 - 2025-10-02
 
 set -euo pipefail
 clear
@@ -100,36 +100,36 @@ for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
 done
 
 # === Version check ===
-# Dynamically extract version from this script
-SCRIPT_VERSION=$(grep -m1 -oP 'Version\s+\K[0-9\. -]+' "$0")
-REMOTE_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/BuildCryptoShred.sh"
+# # Dynamically extract version from this script
+# SCRIPT_VERSION=$(grep -m1 -oP 'Version\s+\K[0-9\. -]+' "$0")
+# REMOTE_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/BuildCryptoShred.sh"
 
-# Download remote script to temp file and extract version
-echo
-echo "[*] Checking for latest BuildCryptoShred.sh version online..."
-REMOTE_SCRIPT="$(mktemp)"
-curl -s "$REMOTE_URL" -o "$REMOTE_SCRIPT"
-REMOTE_VERSION=$(grep -m1 -oP 'Version\s+\K[0-9\. -]+' "$REMOTE_SCRIPT")
+# # Download remote script to temp file and extract version
+# echo
+# echo "[*] Checking for latest BuildCryptoShred.sh version online..."
+# REMOTE_SCRIPT="$(mktemp)"
+# curl -s "$REMOTE_URL" -o "$REMOTE_SCRIPT"
+# REMOTE_VERSION=$(grep -m1 -oP 'Version\s+\K[0-9\. -]+' "$REMOTE_SCRIPT")
 
-# Compare versions
-if [ "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]; then
-  echo
-  echo "[!] Local script version ($SCRIPT_VERSION) does not match latest online version ($REMOTE_VERSION)."
-  echo "    Updating local script with the latest version..."
-  cp "$REMOTE_SCRIPT" "$0"
-  echo
-  echo "[+] Script updated. Please re-run BuildCryptoShred.sh."
-  rm "$REMOTE_SCRIPT"
-  exit 0
-fi
-rm "$REMOTE_SCRIPT"
+# # Compare versions
+# if [ "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]; then
+#   echo
+#   echo "[!] Local script version ($SCRIPT_VERSION) does not match latest online version ($REMOTE_VERSION)."
+#   echo "    Updating local script with the latest version..."
+#   cp "$REMOTE_SCRIPT" "$0"
+#   echo
+#   echo "[+] Script updated. Please re-run BuildCryptoShred.sh."
+#   rm "$REMOTE_SCRIPT"
+#   exit 0
+# fi
+# rm "$REMOTE_SCRIPT"
 
 # === Main script ===
 echo
 echo "================================================= CryptoShred ISO Builder ================================================="
 echo
 echo "CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed"
-echo "Version 1.6 - 2025-10-20"
+echo "Version 1.5 - 2025-10-02"
 echo
 echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
 echo "The resulting ISO will be written directly to the specified USB device."
@@ -204,15 +204,27 @@ chmod 700 "$WORKDIR"
 cd "$WORKDIR"
 
 # === Download latest CryptoShred.sh ===
-REMOTE_CRYPTOSHRED_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/CryptoShred.sh"
+# REMOTE_CRYPTOSHRED_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/CryptoShred.sh"
+# echo
+# echo "[*] Downloading latest CryptoShred.sh..."
+# mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
+# if ! curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$CRYPTOSHRED_SCRIPT"; then
+#   echo
+#   echo "[!] Failed to download CryptoShred.sh from $REMOTE_CRYPTOSHRED_URL"
+#   exit 1
+# fi
+
+# === Copy local CryptoShred.sh to workdir ===
 echo
-echo "[*] Downloading latest CryptoShred.sh..."
-mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
-if ! curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$CRYPTOSHRED_SCRIPT"; then
+echo "[*] Copying local CryptoShred.sh to workdir..."
+LOCAL_CRYPTOSHRED="$(dirname "$0")/CryptoShred.sh"
+if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
   echo
-  echo "[!] Failed to download CryptoShred.sh from $REMOTE_CRYPTOSHRED_URL"
+  echo "[!] Local CryptoShred.sh not found at $LOCAL_CRYPTOSHRED. Aborting."
   exit 1
 fi
+mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
+cp -- "$LOCAL_CRYPTOSHRED" "$CRYPTOSHRED_SCRIPT"
 
 # === 1. Download latest Debian LTS netinst/live ISO ===
 echo
@@ -245,38 +257,38 @@ mkdir -p edit/usr/bin
 cp -- "$CRYPTOSHRED_SCRIPT" "edit/usr/bin/CryptoShred.sh"
 chmod 755 "edit/usr/bin/CryptoShred.sh"
 
-
-
 # === 4. Create and enable service ===
 echo
 echo "[*] Creating CryptoShred service..."
 cat > edit/etc/systemd/system/cryptoshred.service <<'EOF'
 [Unit]
 Description=CryptoShred autorun (first-boot)
-After=systemd-udev-settle.service local-fs.target
+After=systemd-udev-settle.service local-fs.target getty@tty1.service
 Wants=systemd-udev-settle.service
 DefaultDependencies=no
 
 [Service]
 Type=oneshot
 # Wait for system to be fully ready
-ExecStartPre=/bin/sleep 12
-# Stop getty on tty1 to free it up
+ExecStartPre=/bin/sleep 15
+# Stop getty on tty1 to free it up  
 ExecStartPre=-/bin/systemctl stop getty@tty1.service
-# Run CryptoShred with proper TTY
-ExecStart=/bin/bash -c '/usr/bin/CryptoShred.sh </dev/tty1 >/dev/tty1 2>&1'
-# Restart getty after script completes
+# Run script with failure recovery - if it fails, show error and restart getty
+ExecStart=/bin/bash -c 'export SYSTEMD_EXEC_PID=$$; export NO_CLEAN_ENV=1; export TERM=linux; if ! /usr/bin/CryptoShred.sh </dev/tty1 >/dev/tty1 2>&1; then echo "=== CRYPTOSHRED FAILED - Check USB and reboot ===" > /dev/tty1; echo "System will restart getty in 30 seconds..." > /dev/tty1; sleep 30; fi'
+# Always restart getty on completion or failure
 ExecStartPost=-/bin/systemctl start getty@tty1.service
-TimeoutStartSec=20m
+# If service fails completely, still try to restart getty
+ExecStopPost=-/bin/systemctl start getty@tty1.service
+TimeoutStartSec=25m
 RemainAfterExit=no
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=sysinit.target
 EOF
 
-# Enable service under multi-user.target (use relative symlink for portability inside image)
-mkdir -p edit/etc/systemd/system/multi-user.target.wants
-ln -sf ../cryptoshred.service edit/etc/systemd/system/multi-user.target.wants/cryptoshred.service
+# Enable service under sysinit.target (use relative symlink for portability inside image)
+mkdir -p edit/etc/systemd/system/sysinit.target.wants
+ln -sf ../cryptoshred.service edit/etc/systemd/system/sysinit.target.wants/cryptoshred.service
 cd "$WORKDIR"
 
 # === 5. Chroot actions ===
@@ -344,10 +356,10 @@ echo "[*] Rebuilding squashfs..."
 mksquashfs edit iso/live/filesystem.squashfs -noappend -e boot
 
 # Verify the cryptoshred service and its enablement symlink exist in the edit tree
-if [ ! -f "edit/etc/systemd/system/cryptoshred.service" ] || [ ! -L "edit/etc/systemd/system/multi-user.target.wants/cryptoshred.service" ]; then
+if [ ! -f "edit/etc/systemd/system/cryptoshred.service" ] || [ ! -L "edit/etc/systemd/system/sysinit.target.wants/cryptoshred.service" ]; then
   echo
   echo "[ERROR] cryptoshred.service or its enablement symlink is missing from the edit tree after squashfs rebuild."
-  echo "[ERROR] Please check edit/etc/systemd/system and edit/etc/systemd/system/multi-user.target.wants"
+  echo "[ERROR] Please check edit/etc/systemd/system and edit/etc/systemd/system/sysinit.target.wants"
   exit 1
 fi
 
