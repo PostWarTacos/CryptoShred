@@ -247,8 +247,9 @@ apt-get update
 echo "[CHROOT] Running apt upgrade..."
 apt-get -y full-upgrade
 
-echo "[CHROOT] Installing nvme-cli, cryptsetup, and networking tools..."
+echo "[CHROOT] Installing nvme-cli, cryptsetup, disk tools, and networking tools..."
 apt-get -y install nvme-cli cryptsetup \
+    util-linux gdisk \
     network-manager network-manager-gnome \
     wireless-tools wpasupplicant \
     curl wget net-tools \
@@ -259,6 +260,17 @@ apt-get -y install nvme-cli cryptsetup \
 
 # Try to install dnsutils separately, ignore if it conflicts
 apt-get -y install dnsutils || echo "Warning: dnsutils installation failed, continuing without it"
+
+echo "[CHROOT] Installing sedutil-cli for SED drive management..."
+# Download the release archive
+wget "https://github.com/Drive-Trust-Alliance/exec/blob/master/sedutil_LINUX.tgz?raw=true" -O sedutil_LINUX.tgz
+# Extract it
+tar -xf sedutil_LINUX.tgz
+# Move it into the system admin path
+mv sedutil/release_x86_64/sedutil-cli /usr/local/sbin/sedutil-cli
+# Make the CLI binary executable
+chmod +x /usr/local/sbin/sedutil-cli
+rm -rf ./sedutil* ./sedutil_LINUX.tgz
 
 echo "[CHROOT] Enabling NetworkManager service..."
 systemctl enable NetworkManager
@@ -439,17 +451,17 @@ chmod +x /usr/local/bin/auto-wifi-connect.sh
 
 echo "[CHROOT] Auto-wifi service created but COMPLETELY DISABLED (manual connection only)..."
 # Auto-WiFi is disabled - use nmtui for all connections
-# systemctl enable auto-wifi-connect.service  # DISABLED
-systemctl mask auto-wifi-connect.service  # MASKED to prevent any activation
+# Note: Service file must exist before we can mask it, so we create it first above
 systemctl disable auto-wifi-connect.service 2>/dev/null || true
+systemctl mask auto-wifi-connect.service 2>/dev/null || true
 
 echo "[CHROOT] Setting up PATH for system tools..."
 # Ensure nvme-cli and other system tools are in PATH for all users
-echo 'export PATH=$PATH:/usr/sbin:/sbin' >> /etc/profile
-echo 'export PATH=$PATH:/usr/sbin:/sbin' >> /etc/bash.bashrc
+echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin' >> /etc/profile
+echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin' >> /etc/bash.bashrc
 # Also add for live user's bashrc
 mkdir -p /home/user
-echo 'export PATH=$PATH:/usr/sbin:/sbin' >> /home/user/.bashrc
+echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin' >> /home/user/.bashrc
 
 echo "[CHROOT] Configuring WiFi stability fixes..."
 # Create comprehensive WiFi stability configuration
@@ -661,7 +673,7 @@ echo
 echo "================================== Build Summary =================================="
 echo "• Debian Live ISO downloaded and extracted"
 echo "• System updated with 'apt update' and 'apt upgrade'"
-echo "• Installed packages: nvme-cli, cryptsetup"
+echo "• Installed packages: nvme-cli, cryptsetup, wipefs, dd, sgdisk, sedutil-cli"
 echo "• System PATH: Fixed to include /usr/sbin:/sbin for nvme tools"
 echo "• Networking: NetworkManager, WiFi drivers, SSH client"
 echo "• Network tools: curl, wget, net-tools, wireless-tools"
