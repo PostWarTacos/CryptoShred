@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════════════════
 # EXECUTION COMMAND AND INITIAL SETUP
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -78,13 +78,13 @@ for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo
     echo "[!] $cmd is not installed. Attempting to install..."
-    apt-get update
+    apt update
     if [ "$cmd" = "7z" ]; then
-      apt-get install -y p7zip-full
+      apt install -y p7zip-full
     elif [ "$cmd" = "unsquashfs" ]; then
-      apt-get install -y squashfs-tools
+      apt install -y squashfs-tools
     else
-      apt-get install -y "$cmd"
+      apt install -y "$cmd"
     fi
     if ! command -v "$cmd" >/dev/null 2>&1; then
       echo
@@ -102,14 +102,14 @@ done
 echo
 echo "============================================= Debian Live ISO Builder ============================================="
 echo
-echo "Debian Live ISO Builder - Create a bootable Debian Live ISO with nvme-cli and cryptsetup"
-echo "Version 1.0 - 2025-10-22"
+echo "Debian Live ISO Builder - Create a bootable Debian Live ISO with several packages installed and flash it to USB."
+echo "Version 1.2 - 2025-10-22"
 echo
 echo "This script will:"
 echo "  • Download the latest Debian Live ISO"
 echo "  • Extract and modify the ISO"
 echo "  • Update the system with 'apt update' and 'apt upgrade'"
-echo "  • Install nvme-cli and cryptsetup packages"
+echo "  • Install several packages"
 echo "  • Rebuild the ISO with the modifications"
 echo "  • Flash the resulting ISO directly to a specified USB device"
 echo
@@ -242,34 +242,40 @@ set -e
 export DEBIAN_FRONTEND=noninteractive
 
 echo "[CHROOT] Running apt update..."
-apt-get update
+apt update
 
 echo "[CHROOT] Running apt upgrade..."
-apt-get -y full-upgrade
+apt -y full-upgrade
 
 echo "[CHROOT] Installing nvme-cli, cryptsetup, disk tools, and networking tools..."
-apt-get -y install nvme-cli cryptsetup \
+sudo add-apt-repository universe || true
+apt -y install nvme-cli cryptsetup \
     util-linux gdisk \
     network-manager network-manager-gnome \
     wireless-tools wpasupplicant \
     curl wget net-tools \
-    openssh-client \
+    openssh-client openssh-server \
+    ca-certificates gnupg \
+    bash-completion tmux screen mc htop lsof ncdu tree pv \
+    zip unzip p7zip-full \
+    rsync debootstrap lvm2 \
+    e2fsprogs ntfs-3g exfatprogs btrfs-progs \
+    smartmontools hdparm testdisk gparted \
+    nmap netcat-openbsd tcpdump traceroute mtr-tiny iperf3 socat \
     firmware-iwlwifi firmware-realtek firmware-atheros \
-    iputils-ping \
+    iputils-ping dnsutils \
     lynx
 
-# Try to install dnsutils separately, ignore if it conflicts
-apt-get -y install dnsutils || echo "Warning: dnsutils installation failed, continuing without it"
-
 echo "[CHROOT] Installing sedutil-cli for SED drive management..."
-# Download the release archive
+# Download sedutil and extract archive
 wget "https://github.com/Drive-Trust-Alliance/exec/blob/master/sedutil_LINUX.tgz?raw=true" -O sedutil_LINUX.tgz
-# Extract it
 tar -xf sedutil_LINUX.tgz
-# Move it into the system admin path
+
+# Move it into the system admin path and make executable
 mv sedutil/release_x86_64/sedutil-cli /usr/local/sbin/sedutil-cli
-# Make the CLI binary executable
 chmod +x /usr/local/sbin/sedutil-cli
+
+# Clean up sedutil files
 rm -rf ./sedutil* ./sedutil_LINUX.tgz
 
 echo "[CHROOT] Enabling NetworkManager service..."
@@ -292,168 +298,6 @@ EOF
 echo "[CHROOT] Setting up network interface naming..."
 # Disable predictable network interface names for easier live boot compatibility
 ln -sf /dev/null /etc/systemd/network/99-default.link
-
-echo "[CHROOT] Creating auto-wifi connection service (DISABLED by default)..."
-cat > /etc/systemd/system/auto-wifi-connect.service << 'EOF'
-[Unit]
-Description=Auto-connect to strongest open WiFi (DISABLED - use manual connection)
-After=NetworkManager.service
-Wants=NetworkManager.service
-Requisite=NetworkManager.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-Restart=no
-ExecStart=/usr/local/bin/auto-wifi-connect.sh
-TimeoutStartSec=60
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-echo "[CHROOT] Creating auto-wifi connection script..."
-cat > /usr/local/bin/auto-wifi-connect.sh << 'EOF'
-#!/bin/bash
-set -e
-
-# Auto-connect to strongest open WiFi with retry logic
-# Only attempts twice, then gives up
-
-LOGFILE="/var/log/auto-wifi-connect.log"
-MAX_RETRIES=2
-RETRY_COUNT=0
-
-log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOGFILE"
-}
-
-log "Auto-WiFi connection attempt starting..."
-
-# Wait for NetworkManager to be fully ready
-sleep 10
-
-# Check if we already have an internet connection
-if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
-    log "Internet connection already available, skipping WiFi auto-connect"
-    exit 0
-fi
-
-# Check if NetworkManager is managing WiFi connections
-if nmcli -t -f DEVICE,STATE device status | grep -q "wifi.*connected"; then
-    log "WiFi already connected via NetworkManager, skipping auto-connect"
-    exit 0
-fi
-
-# Get WiFi interface
-WIFI_INTERFACE=$(nmcli device status | grep wifi | grep -v unavailable | head -n1 | awk '{print $1}')
-if [ -z "$WIFI_INTERFACE" ]; then
-    log "No WiFi interface found"
-    exit 1
-fi
-
-log "Found WiFi interface: $WIFI_INTERFACE"
-
-# Disable WiFi power management to prevent disconnections
-iwconfig "$WIFI_INTERFACE" power off 2>/dev/null || true
-
-# Enable WiFi if disabled
-nmcli radio wifi on
-sleep 5
-
-# Stop any existing auto-connections that might be causing conflicts
-nmcli connection show --active | grep wifi | awk '{print $1}' | while read conn; do
-    nmcli connection down "$conn" 2>/dev/null || true
-done
-
-sleep 3
-
-# Scan for networks
-log "Scanning for WiFi networks..."
-nmcli device wifi rescan
-sleep 8
-
-# Find strongest open network (no security)
-STRONGEST_OPEN=$(nmcli -t -f SSID,SIGNAL,SECURITY device wifi list | \
-    grep -E ':--$|:$' | \
-    grep -v '^:' | \
-    sort -t: -k2 -nr | \
-    head -n1 | \
-    cut -d: -f1)
-
-if [ -z "$STRONGEST_OPEN" ]; then
-    log "No open WiFi networks found"
-    exit 1
-fi
-
-log "Attempting to connect to strongest open network: $STRONGEST_OPEN"
-
-# Create a temporary connection profile to avoid conflicts
-CONNECTION_NAME="auto-wifi-temp-$$"
-
-# Attempt connection with explicit parameters
-if nmcli connection add type wifi con-name "$CONNECTION_NAME" ifname "$WIFI_INTERFACE" ssid "$STRONGEST_OPEN" && \
-   nmcli connection up "$CONNECTION_NAME"; then
-    log "Successfully connected to $STRONGEST_OPEN"
-    
-    # Check for captive portal first
-    sleep 10
-    log "Checking for captive portal..."
-    
-    # Try to access a captive portal detection URL
-    CAPTIVE_CHECK=$(curl -s -I --connect-timeout 10 "http://detectportal.firefox.com/canonical.html" | head -n1 | cut -d' ' -f2 2>/dev/null || echo "000")
-    
-    if [ "$CAPTIVE_CHECK" = "200" ]; then
-        log "Direct internet access confirmed (no captive portal)"
-    else
-        log "Captive portal detected or connection issue (HTTP response: $CAPTIVE_CHECK)"
-        
-        # Try to get the gateway/router IP for captive portal
-        GATEWAY=$(ip route show default | grep "$WIFI_INTERFACE" | awk '{print $3}' | head -n1)
-        if [ -n "$GATEWAY" ]; then
-            log "Gateway/Router IP: $GATEWAY"
-            log "You may need to open a web browser and navigate to http://$GATEWAY"
-            log "This appears to be a captive portal network requiring web authentication"
-        fi
-        
-        # Still test basic connectivity to see if we can reach the gateway
-        if ping -c 3 "$GATEWAY" >/dev/null 2>&1; then
-            log "Can reach gateway ($GATEWAY) - captive portal likely blocking internet"
-            # Don't disconnect - user might want to authenticate via browser
-            exit 0
-        else
-            log "Cannot reach gateway ($GATEWAY) - connection failed"
-            # Clean up failed connection
-            nmcli connection down "$CONNECTION_NAME" 2>/dev/null || true
-            nmcli connection delete "$CONNECTION_NAME" 2>/dev/null || true
-            exit 1
-        fi
-    fi
-    
-    # Final internet connectivity test
-    if ping -c 3 1.1.1.1 >/dev/null 2>&1; then
-        log "Internet connectivity confirmed via ping"
-        exit 0
-    else
-        log "Connected to WiFi but no internet access (may require captive portal login)"
-        # Don't disconnect automatically - might be captive portal
-        exit 0
-    fi
-else
-    log "Failed to connect to $STRONGEST_OPEN"
-    # Clean up failed connection
-    nmcli connection delete "$CONNECTION_NAME" 2>/dev/null || true
-    exit 1
-fi
-EOF
-
-chmod +x /usr/local/bin/auto-wifi-connect.sh
-
-echo "[CHROOT] Auto-wifi service created but COMPLETELY DISABLED (manual connection only)..."
-# Auto-WiFi is disabled - use nmtui for all connections
-# Note: Service file must exist before we can mask it, so we create it first above
-systemctl disable auto-wifi-connect.service 2>/dev/null || true
-systemctl mask auto-wifi-connect.service 2>/dev/null || true
 
 echo "[CHROOT] Setting up PATH for system tools..."
 # Ensure nvme-cli and other system tools are in PATH for all users
@@ -518,12 +362,7 @@ chmod +x /etc/NetworkManager/dispatcher.d/99-wifi-stability
 cat > /usr/local/bin/wifi-connect-manual.sh << 'EOF'
 #!/bin/bash
 echo "=== Manual WiFi Connection Helper ==="
-echo "Auto-WiFi is DISABLED - Manual connection only"
 echo
-
-# Ensure auto-wifi service is stopped and disabled
-systemctl stop auto-wifi-connect.service 2>/dev/null || true
-systemctl mask auto-wifi-connect.service 2>/dev/null || true
 
 # Apply WiFi stability settings
 iwconfig wlan0 power off 2>/dev/null || true
@@ -551,7 +390,7 @@ EOF
 chmod +x /usr/local/bin/wifi-connect-manual.sh
 
 echo "[CHROOT] Cleaning package cache..."
-apt-get clean
+apt clean
 
 echo "[CHROOT] Package installation and network configuration completed successfully!"
 exit
@@ -668,27 +507,12 @@ sync
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[+] ISO creation and USB flashing completed successfully!"
+echo "[*] ISO creation and USB flashing completed successfully!"
 echo
-echo "================================== Build Summary =================================="
+echo "================================== Build Summary ============================================"
 echo "• Debian Live ISO downloaded and extracted"
-echo "• System updated with 'apt update' and 'apt upgrade'"
-echo "• Installed packages: nvme-cli, cryptsetup, wipefs, dd, sgdisk, sedutil-cli"
-echo "• System PATH: Fixed to include /usr/sbin:/sbin for nvme tools"
-echo "• Networking: NetworkManager, WiFi drivers, SSH client"
-echo "• Network tools: curl, wget, net-tools, wireless-tools"
-echo "• Auto-WiFi: DISABLED - Use manual connection only (nmtui recommended)"
-echo "• ISO rebuilt and written to /dev/$USBDEV"
-echo "• Boot timeout set to 0 seconds (skips GRUB menu)"
-echo
-echo "Your USB device is now ready to boot with full networking support!"
-echo "• Ethernet: Auto-configured via DHCP"
-echo "• WiFi: Manual connection ONLY - use 'nmtui' command"
-echo "• Auto-WiFi: COMPLETELY DISABLED for stability"
-echo "• Captive Portal: Use 'lynx http://GATEWAY_IP' if needed"
-echo "• Manual WiFi helper: Run 'wifi-connect-manual.sh' as root"
-echo "• Browser: Lynx text browser available for captive portals"
-echo "• SSH: Client available for remote connections"
-echo "• Logs: Check /var/log/wifi-stability.log for WiFi issues"
-echo "==================================================================================="
-echo
+echo "• ISO: downloaded, modified, rebuilt"
+echo "• Key packages: nvme-cli, cryptsetup, sedutil-cli, network tools, lynx, ssh client"
+echo "• Network: NetworkManager enabled; WiFi is manual (use 'nmtui')"
+echo "• Helpers: /usr/local/bin/wifi-connect-manual.sh installed for manual WiFi connections"
+echo "============================================================================================"
