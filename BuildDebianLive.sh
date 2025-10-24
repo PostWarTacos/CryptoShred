@@ -12,6 +12,13 @@
 set -euo pipefail
 clear
 
+# Color definitions for installation messages
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # SHELL AND ENVIRONMENT DETECTION
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -241,6 +248,10 @@ cat <<'CHROOT' | chroot edit /bin/bash
 set -e
 export DEBIAN_FRONTEND=noninteractive
 
+# Initialize package tracking arrays
+INSTALLED_PACKAGES=()
+FAILED_PACKAGES=()
+
 echo "[CHROOT] Running apt update..."
 apt update
 
@@ -248,35 +259,287 @@ echo "[CHROOT] Running apt upgrade..."
 apt -y full-upgrade
 
 echo "[CHROOT] Installing nvme-cli, cryptsetup, disk tools, and networking tools..."
-sudo add-apt-repository universe || true
-apt -y install nvme-cli cryptsetup \
-    util-linux gdisk \
-    network-manager network-manager-gnome \
-    wireless-tools wpasupplicant \
-    curl wget net-tools \
-    openssh-client openssh-server \
-    ca-certificates gnupg \
-    bash-completion tmux screen mc htop lsof ncdu tree pv \
-    zip unzip p7zip-full \
-    rsync debootstrap lvm2 \
-    e2fsprogs ntfs-3g exfatprogs btrfs-progs \
-    smartmontools hdparm testdisk gparted \
-    nmap netcat-openbsd tcpdump traceroute mtr-tiny iperf3 socat \
-    firmware-iwlwifi firmware-realtek firmware-atheros \
-    iputils-ping dnsutils \
-    lynx
+# Install core packages individually to track each one
+CORE_PACKAGES=(nvme-cli cryptsetup util-linux gdisk network-manager network-manager-gnome wireless-tools wpasupplicant curl wget net-tools ca-certificates gnupg firmware-iwlwifi firmware-realtek firmware-atheros iputils-ping lynx)
+echo -e "${YELLOW}Installing core packages individually: ${CORE_PACKAGES[*]}${NC}"
+CORE_SUCCESS=0
+CORE_FAILED=0
+for pkg in "${CORE_PACKAGES[@]}"; do
+    echo -e "${YELLOW}Installing $pkg...${NC}"
+    if apt -y install "$pkg"; then
+        echo -e "${GREEN}✓ $pkg: SUCCESS${NC}"
+        CORE_SUCCESS=$((CORE_SUCCESS + 1))
+        INSTALLED_PACKAGES+=("$pkg")
+    else
+        echo -e "${RED}✗ $pkg: FAILED${NC}"
+        CORE_FAILED=$((CORE_FAILED + 1))
+        FAILED_PACKAGES+=("$pkg")
+    fi
+done
+echo "Core packages: $CORE_SUCCESS/${#CORE_PACKAGES[@]} succeeded"
+if [ $CORE_FAILED -gt 0 ]; then
+    echo ">>> PAUSING: $CORE_FAILED core packages failed <<<"
+    echo "Failed packages: ${FAILED_PACKAGES[*]}"
+    echo "WARNING: $CORE_FAILED core packages failed."
+    echo "Sleeping for 10 seconds to allow screenshot..."
+    sleep 10
+    echo ">>> CONTINUING after pause <<<"
+fi
+
+# Try to install openssh packages separately to handle version conflicts
+echo "[CHROOT] Installing SSH packages..."
+echo -e "${YELLOW}Checking package system status...${NC}"
+apt list --upgradable 2>/dev/null | head -5
+echo -e "${YELLOW}Cleaning package system before SSH installation...${NC}"
+apt-get clean
+apt-get autoclean
+apt-get autoremove -y
+dpkg --configure -a
+apt-get install -f -y
+
+echo -e "${YELLOW}Installing SSH packages: openssh-client openssh-server${NC}"
+SSH_SUCCESS=0
+SSH_FAILED=0
+
+# Try installing both together first (often works better)
+echo -e "${YELLOW}Attempting to install both SSH packages together...${NC}"
+if apt -y install openssh-client openssh-server; then
+    echo -e "${GREEN}✓ openssh-client and openssh-server: SUCCESS${NC}"
+    SSH_SUCCESS=2
+    INSTALLED_PACKAGES+=(openssh-client openssh-server)
+else
+    echo -e "${YELLOW}Joint installation failed, trying individually...${NC}"
+    
+    # Install client first (required for server)
+    echo -e "${YELLOW}Installing openssh-client...${NC}"
+    if apt -y install openssh-client; then
+        echo -e "${GREEN}✓ openssh-client: SUCCESS${NC}"
+        SSH_SUCCESS=$((SSH_SUCCESS + 1))
+        INSTALLED_PACKAGES+=(openssh-client)
+        
+        # Only try server if client succeeded
+        echo -e "${YELLOW}Client installed successfully, attempting openssh-server...${NC}"
+        if apt -y install openssh-server; then
+            echo -e "${GREEN}✓ openssh-server: SUCCESS${NC}"
+            SSH_SUCCESS=$((SSH_SUCCESS + 1))
+            INSTALLED_PACKAGES+=(openssh-server)
+        else
+            echo -e "${RED}✗ openssh-server: FAILED (client installed but server failed)${NC}"
+            SSH_FAILED=$((SSH_FAILED + 1))
+            FAILED_PACKAGES+=(openssh-server)
+        fi
+    else
+        echo -e "${RED}✗ openssh-client: FAILED${NC}"
+        SSH_FAILED=$((SSH_FAILED + 1))
+        FAILED_PACKAGES+=(openssh-client)
+        echo -e "${YELLOW}⚠ Skipping openssh-server (requires openssh-client)${NC}"
+        SSH_FAILED=$((SSH_FAILED + 1))
+        FAILED_PACKAGES+=(openssh-server)
+    fi
+fi
+echo "SSH packages: $SSH_SUCCESS/2 succeeded"
+if [ $SSH_FAILED -gt 0 ]; then
+    echo ">>> PAUSING: $SSH_FAILED SSH packages failed <<<"
+    echo "WARNING: $SSH_FAILED SSH packages failed."
+    echo "Sleeping for 10 seconds to allow screenshot..."
+    sleep 10
+    echo ">>> CONTINUING after pause <<<"
+fi
+
+# Try to install dnsutils separately, ignore if it conflicts
+echo "[CHROOT] Installing DNS utilities..."
+echo -e "${YELLOW}Installing DNS utilities: host${NC}"
+DNS_SUCCESS=0
+DNS_FAILED=0
+if apt -y install host; then
+    echo -e "${GREEN}✓ host: SUCCESS${NC}"
+    DNS_SUCCESS=1
+    INSTALLED_PACKAGES+=(host)
+else
+    echo -e "${RED}✗ host: FAILED${NC}"
+    DNS_FAILED=1
+    FAILED_PACKAGES+=(host)
+fi
+if [ $DNS_FAILED -gt 0 ]; then
+    echo ">>> PAUSING: DNS utilities failed <<<"
+    echo "WARNING: DNS utilities failed."
+    echo "Sleeping for 10 seconds to allow screenshot..."
+    sleep 10
+    echo ">>> CONTINUING after pause <<<"
+fi
+
+# Install system utilities and tools
+echo "[CHROOT] Installing system utilities..."
+SYS_PACKAGES=(bash-completion screen mc htop lsof ncdu tree pv zip unzip p7zip-full rsync lvm2 e2fsprogs ntfs-3g btrfs-progs)
+echo -e "${YELLOW}Installing system utilities individually: ${SYS_PACKAGES[*]}${NC}"
+SYS_SUCCESS=0
+SYS_FAILED=0
+for pkg in "${SYS_PACKAGES[@]}"; do
+    echo -e "${YELLOW}Installing $pkg...${NC}"
+    if apt -y install "$pkg"; then
+        echo -e "${GREEN}✓ $pkg: SUCCESS${NC}"
+        SYS_SUCCESS=$((SYS_SUCCESS + 1))
+        INSTALLED_PACKAGES+=("$pkg")
+    else
+        echo -e "${RED}✗ $pkg: FAILED${NC}"
+        SYS_FAILED=$((SYS_FAILED + 1))
+        FAILED_PACKAGES+=("$pkg")
+    fi
+done
+echo "System utilities: $SYS_SUCCESS/${#SYS_PACKAGES[@]} succeeded"
+if [ $SYS_FAILED -gt 0 ]; then
+    echo ">>> PAUSING: $SYS_FAILED system utilities failed <<<"
+    echo "WARNING: $SYS_FAILED system utilities failed."
+    echo "Sleeping for 10 seconds to allow screenshot..."
+    sleep 10
+    echo ">>> CONTINUING after pause <<<"
+fi
+
+# Install disk and filesystem tools  
+echo "[CHROOT] Installing disk management tools..."
+echo -e "${YELLOW}Installing disk tools: smartmontools hdparm testdisk${NC}"
+DISK_SUCCESS=0
+DISK_FAILED=0
+echo -e "${YELLOW}Installing smartmontools...${NC}"
+if apt -y install smartmontools; then
+    echo -e "${GREEN}✓ smartmontools: SUCCESS${NC}"
+    DISK_SUCCESS=$((DISK_SUCCESS + 1))
+    INSTALLED_PACKAGES+=(smartmontools)
+else
+    echo -e "${RED}✗ smartmontools: FAILED${NC}"
+    DISK_FAILED=$((DISK_FAILED + 1))
+    FAILED_PACKAGES+=(smartmontools)
+fi
+echo -e "${YELLOW}Installing hdparm...${NC}"
+if apt -y install hdparm; then
+    echo -e "${GREEN}✓ hdparm: SUCCESS${NC}"
+    DISK_SUCCESS=$((DISK_SUCCESS + 1))
+    INSTALLED_PACKAGES+=(hdparm)
+else
+    echo -e "${RED}✗ hdparm: FAILED${NC}"
+    DISK_FAILED=$((DISK_FAILED + 1))
+    FAILED_PACKAGES+=(hdparm)
+fi
+echo -e "${YELLOW}Installing testdisk...${NC}"
+if apt -y install testdisk; then
+    echo -e "${GREEN}✓ testdisk: SUCCESS${NC}"
+    DISK_SUCCESS=$((DISK_SUCCESS + 1))
+    INSTALLED_PACKAGES+=(testdisk)
+else
+    echo -e "${RED}✗ testdisk: FAILED${NC}"
+    DISK_FAILED=$((DISK_FAILED + 1))
+    FAILED_PACKAGES+=(testdisk)
+fi
+echo "Disk tools: $DISK_SUCCESS/3 succeeded"
+if [ $DISK_FAILED -gt 0 ]; then
+    echo ">>> PAUSING: $DISK_FAILED disk tools failed <<<"
+    echo "WARNING: $DISK_FAILED disk tools failed."
+    echo "Sleeping for 10 seconds to allow screenshot..."
+    sleep 10
+    echo ">>> CONTINUING after pause <<<"
+fi
+
+# Install networking tools
+echo "[CHROOT] Installing networking tools..."
+echo -e "${YELLOW}Installing networking tools: nmap netcat-openbsd tcpdump traceroute iperf3 socat${NC}"
+NET_SUCCESS=0
+NET_FAILED=0
+for pkg in nmap netcat-openbsd tcpdump traceroute iperf3 socat; do
+    echo -e "${YELLOW}Installing $pkg...${NC}"
+    if apt -y install "$pkg"; then
+        echo -e "${GREEN}✓ $pkg: SUCCESS${NC}"
+        NET_SUCCESS=$((NET_SUCCESS + 1))
+        INSTALLED_PACKAGES+=("$pkg")
+    else
+        echo -e "${RED}✗ $pkg: FAILED${NC}"
+        NET_FAILED=$((NET_FAILED + 1))
+        FAILED_PACKAGES+=("$pkg")
+    fi
+done
+echo "Networking tools: $NET_SUCCESS/6 succeeded"
+if [ $NET_FAILED -gt 0 ]; then
+    echo ">>> PAUSING: $NET_FAILED networking tools failed <<<"
+    echo "WARNING: $NET_FAILED networking tools failed."
+    echo "Sleeping for 10 seconds to allow screenshot..."
+    sleep 10
+    echo ">>> CONTINUING after pause <<<"
+fi
+
+# Try debootstrap and exfatprogs separately (might conflict)
+echo "[CHROOT] Installing additional tools..."
+ADD_SUCCESS=0
+ADD_FAILED=0
+echo -e "${YELLOW}Installing additional tools: debootstrap exfatprogs${NC}"
+echo -e "${YELLOW}Installing debootstrap...${NC}"
+if apt -y install debootstrap; then
+    echo -e "${GREEN}✓ debootstrap: SUCCESS${NC}"
+    ADD_SUCCESS=$((ADD_SUCCESS + 1))
+    INSTALLED_PACKAGES+=(debootstrap)
+else
+    echo -e "${RED}✗ debootstrap: FAILED${NC}"
+    ADD_FAILED=$((ADD_FAILED + 1))
+    FAILED_PACKAGES+=(debootstrap)
+fi
+echo -e "${YELLOW}Installing exfatprogs...${NC}"
+if apt -y install exfatprogs; then
+    echo -e "${GREEN}✓ exfatprogs: SUCCESS${NC}"
+    ADD_SUCCESS=$((ADD_SUCCESS + 1))
+    INSTALLED_PACKAGES+=(exfatprogs)
+else
+    echo -e "${RED}✗ exfatprogs: FAILED${NC}"
+    ADD_FAILED=$((ADD_FAILED + 1))
+    FAILED_PACKAGES+=(exfatprogs)
+fi
+echo "Additional tools: $ADD_SUCCESS/2 succeeded"
+if [ $ADD_FAILED -gt 0 ]; then
+    echo ">>> PAUSING: $ADD_FAILED additional tools failed <<<"
+    echo "WARNING: $ADD_FAILED additional tools failed."
+    echo "Sleeping for 10 seconds to allow screenshot..."
+    sleep 10
+    echo ">>> CONTINUING after pause <<<"
+fi
 
 echo "[CHROOT] Installing sedutil-cli for SED drive management..."
 # Download sedutil and extract archive
-wget "https://github.com/Drive-Trust-Alliance/exec/blob/master/sedutil_LINUX.tgz?raw=true" -O sedutil_LINUX.tgz
-tar -xf sedutil_LINUX.tgz
-
-# Move it into the system admin path and make executable
-mv sedutil/release_x86_64/sedutil-cli /usr/local/sbin/sedutil-cli
-chmod +x /usr/local/sbin/sedutil-cli
+echo -e "${YELLOW}Installing sedutil-cli (manual installation from GitHub)${NC}"
+SED_SUCCESS=0
+SED_FAILED=0
+if wget "https://github.com/Drive-Trust-Alliance/exec/blob/master/sedutil_LINUX.tgz?raw=true" -O sedutil_LINUX.tgz && \
+   tar -xf sedutil_LINUX.tgz && \
+   mv sedutil/Release_x86_64/sedutil-cli /usr/local/sbin/sedutil-cli && \
+   chmod +x /usr/local/sbin/sedutil-cli; then
+    echo -e "${GREEN}✓ sedutil-cli: SUCCESS${NC}"
+    SED_SUCCESS=1
+    INSTALLED_PACKAGES+=(sedutil-cli)
+else
+    echo -e "${RED}✗ sedutil-cli: FAILED${NC}"
+    SED_FAILED=1
+    FAILED_PACKAGES+=(sedutil-cli)
+fi
 
 # Clean up sedutil files
-rm -rf ./sedutil* ./sedutil_LINUX.tgz
+rm -rf ./sedutil* ./sedutil_LINUX.tgz 2>/dev/null || true
+
+if [ $SED_FAILED -gt 0 ]; then
+    echo ">>> PAUSING: sedutil-cli installation failed <<<"
+    echo "WARNING: sedutil-cli installation failed."
+    echo "Sleeping for 10 seconds to allow screenshot..."
+    sleep 10
+    echo ">>> CONTINUING after pause <<<"
+fi
+
+# Ensure system tools are in PATH for all users
+# Create /etc/profile if it doesn't exist
+[ ! -f /etc/profile ] && touch /etc/profile
+echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin:/usr/local/bin' >> /etc/profile
+echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin:/usr/local/bin' >> /etc/bash.bashrc
+
+# Also add to /etc/environment (systemd and other services)
+[ ! -f /etc/environment ] && echo 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' > /etc/environment
+
+# Also add for live user's bashrc
+mkdir -p /home/user
+echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin:/usr/local/bin' >> /home/user/.bashrc
 
 echo "[CHROOT] Enabling NetworkManager service..."
 systemctl enable NetworkManager
@@ -298,14 +561,6 @@ EOF
 echo "[CHROOT] Setting up network interface naming..."
 # Disable predictable network interface names for easier live boot compatibility
 ln -sf /dev/null /etc/systemd/network/99-default.link
-
-echo "[CHROOT] Setting up PATH for system tools..."
-# Ensure nvme-cli and other system tools are in PATH for all users
-echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin' >> /etc/profile
-echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin' >> /etc/bash.bashrc
-# Also add for live user's bashrc
-mkdir -p /home/user
-echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin' >> /home/user/.bashrc
 
 echo "[CHROOT] Configuring WiFi stability fixes..."
 # Create comprehensive WiFi stability configuration
@@ -391,6 +646,25 @@ chmod +x /usr/local/bin/wifi-connect-manual.sh
 
 echo "[CHROOT] Cleaning package cache..."
 apt clean
+
+echo "[CHROOT] Saving package installation results..."
+# Write package lists to files so we can read them outside chroot
+
+# Write to a persistent location that will survive chroot exit
+# Use /var/tmp which is typically persistent, or create in root
+echo "Installed packages:" > /var/tmp/package_results.txt
+
+for pkg in "${INSTALLED_PACKAGES[@]}"; do
+    echo "INSTALLED:$pkg" >> /var/tmp/package_results.txt
+done
+
+echo "Failed packages:" >> /var/tmp/package_results.txt
+for pkg in "${FAILED_PACKAGES[@]}"; do
+    echo "FAILED:$pkg" >> /var/tmp/package_results.txt
+done
+
+echo "Total installed: ${#INSTALLED_PACKAGES[@]}" >> /var/tmp/package_results.txt
+echo "Total failed: ${#FAILED_PACKAGES[@]}" >> /var/tmp/package_results.txt
 
 echo "[CHROOT] Package installation and network configuration completed successfully!"
 exit
@@ -491,6 +765,75 @@ XORRISO_ARGS+=( "$ISO_ROOT" )
 
 echo "[INFO] Running: xorriso ${XORRISO_ARGS[*]}"
 xorriso "${XORRISO_ARGS[@]}"
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# PACKAGE INSTALLATION SUMMARY
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+echo
+echo "========================================="
+echo "          PACKAGE INSTALLATION SUMMARY"
+echo "========================================="
+
+# Read package results from the file created in chroot
+INSTALLED_PACKAGES=()
+FAILED_PACKAGES=()
+
+if [ -f "edit/var/tmp/package_results.txt" ]; then
+    echo "Reading package results from: edit/var/tmp/package_results.txt"
+    echo "File contents:"
+    # cat "edit/var/tmp/package_results.txt"
+    echo "---"
+    
+    while IFS= read -r line; do
+        if [[ "$line" == INSTALLED:* ]]; then
+            pkg="${line#INSTALLED:}"
+            INSTALLED_PACKAGES+=("$pkg")
+        elif [[ "$line" == FAILED:* ]]; then
+            pkg="${line#FAILED:}"
+            FAILED_PACKAGES+=("$pkg")
+        fi
+    done < "edit/var/tmp/package_results.txt"
+else
+    echo "ERROR: No package results file found at edit/var/tmp/package_results.txt"
+    echo "Available files in edit/var/tmp/:"
+    ls -la edit/var/tmp/ 2>/dev/null || echo "Directory does not exist"
+    echo "Available files in edit/tmp/:"
+    ls -la edit/tmp/ 2>/dev/null || echo "Directory does not exist"
+fi
+
+echo
+echo "✓ SUCCESSFULLY INSTALLED PACKAGES (${#INSTALLED_PACKAGES[@]}):"
+if [ ${#INSTALLED_PACKAGES[@]} -gt 0 ]; then
+    for pkg in "${INSTALLED_PACKAGES[@]}"; do
+        echo "  ✓ $pkg"
+    done
+else
+    echo "  (none detected)"
+fi
+
+echo
+echo "✗ FAILED PACKAGES (${#FAILED_PACKAGES[@]}):"
+if [ ${#FAILED_PACKAGES[@]} -gt 0 ]; then
+    for pkg in "${FAILED_PACKAGES[@]}"; do
+        echo "  ✗ $pkg"
+    done
+else
+    echo "  (none detected)"
+fi
+
+TOTAL_ATTEMPTED=$((${#INSTALLED_PACKAGES[@]} + ${#FAILED_PACKAGES[@]}))
+if [ $TOTAL_ATTEMPTED -gt 0 ]; then
+    SUCCESS_RATE=$((${#INSTALLED_PACKAGES[@]} * 100 / TOTAL_ATTEMPTED))
+else
+    SUCCESS_RATE=0
+fi
+
+echo
+echo "TOTAL ATTEMPTED: $TOTAL_ATTEMPTED"
+echo "SUCCESS RATE: ${SUCCESS_RATE}%"
+echo "========================================="
+echo
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # USB WRITING
