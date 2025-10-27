@@ -315,8 +315,27 @@ echo
 echo "[*] Fetching latest Debian ISO link..."
 ISO_URL=$(curl -s "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | 
   grep -oP 'href="debian-live-[0-9.]+-amd64-standard\.iso"' | head -n1 | cut -d'"' -f2)
+
+# Check if ISO_URL was found
+if [ -z "$ISO_URL" ]; then
+  echo "[!] Error: Could not find Debian ISO URL. Check internet connection or Debian mirrors."
+  echo "[DEBUG] Trying to list available ISOs..."
+  curl -s "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | grep -o 'debian-live-[^"]*\.iso' | head -5
+  exit 1
+fi
+
+echo "[*] Found ISO: $ISO_URL"
 echo "[*] Downloading $ISO_URL..."
-wget -q --show-progress "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/$ISO_URL" -O debian.iso
+echo "[*] This may take several minutes depending on your connection..."
+
+# Use wget with better progress display and error handling
+if ! wget --progress=bar:force "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/$ISO_URL" -O debian.iso; then
+  echo "[!] Error: Failed to download Debian ISO"
+  echo "[!] Please check your internet connection and try again"
+  exit 1
+fi
+
+echo "[+] ISO download completed successfully"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # ISO EXTRACTION AND MODIFICATION
@@ -421,15 +440,57 @@ apt-get -y install wget ca-certificates cryptsetup
 
 echo "[*] Installing sedutil-cli for SED drive management..."
 # Download sedutil and extract archive
-wget "https://github.com/Drive-Trust-Alliance/exec/blob/master/sedutil_LINUX.tgz?raw=true" -O sedutil_LINUX.tgz
-tar -xf sedutil_LINUX.tgz
+echo "[*] Downloading sedutil-cli..."
+if ! wget "https://github.com/Drive-Trust-Alliance/exec/blob/master/sedutil_LINUX.tgz?raw=true" -O sedutil_LINUX.tgz; then
+  echo "[!] Warning: Failed to download sedutil-cli. Continuing without it."
+else
+  echo "[*] Extracting sedutil-cli..."
+  tar -xf sedutil_LINUX.tgz
+  
+  # Check which directory structure exists (case-sensitive)
+  if [ -f "sedutil/Release_x86_64/sedutil-cli" ]; then
+    mv sedutil/Release_x86_64/sedutil-cli /usr/local/sbin/sedutil-cli
+  elif [ -f "sedutil/release_x86_64/sedutil-cli" ]; then
+    mv sedutil/release_x86_64/sedutil-cli /usr/local/sbin/sedutil-cli
+  else
+    echo "[!] Warning: sedutil-cli binary not found in expected location. Listing contents:"
+    find sedutil/ -name "sedutil-cli" -type f 2>/dev/null || echo "No sedutil-cli found"
+    echo "[!] Continuing without sedutil-cli..."
+  fi
+  
+  # Make executable if it exists
+  if [ -f "/usr/local/sbin/sedutil-cli" ]; then
+    chmod +x /usr/local/sbin/sedutil-cli
+    echo "[+] sedutil-cli installed successfully"
+  fi
+  
+  # Clean up sedutil files
+  rm -rf ./sedutil* ./sedutil_LINUX.tgz
+fi
 
-# Move it into the system admin path and make executable
-mv sedutil/release_x86_64/sedutil-cli /usr/local/sbin/sedutil-cli
-chmod +x /usr/local/sbin/sedutil-cli
+echo "[*] Configuring PATH to include /usr/local/sbin for all users..."
+# Fix the PATH issue - regular users don't have /usr/local/sbin and /usr/sbin in PATH by default
+# Modify /etc/profile to include sbin directories for all users
+sed -i 's|PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"|PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games"|' /etc/profile
 
-# Clean up sedutil files
-rm -rf ./sedutil* ./sedutil_LINUX.tgz
+# Also add to bash.bashrc for interactive shells
+echo 'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:$PATH"' >> /etc/bash.bashrc
+
+# Update /etc/environment for systemd services
+if [ -f /etc/environment ]; then
+  if grep -q "^PATH=" /etc/environment; then
+    sed -i 's|^PATH="\([^"]*\)"|PATH="/usr/local/sbin:/usr/local/bin:\1"|' /etc/environment
+  else
+    echo 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' >> /etc/environment
+  fi
+else
+  echo 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' > /etc/environment
+fi
+
+# Create a symlink in /usr/bin for easier access (backup approach)
+ln -sf /usr/local/sbin/sedutil-cli /usr/bin/sedutil-cli
+
+echo "[+] PATH configuration completed - sedutil-cli should now be accessible to all users"
 
 apt-get clean
 
@@ -552,3 +613,67 @@ sync
 
 echo
 echo "[+] Done. USB is ready!"
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# ADDITIONAL USB CREATION LOOP
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+while true; do
+  echo
+  read -p "Create another USB? (y/n): " CREATE_ANOTHER
+  
+  case "$CREATE_ANOTHER" in
+    [Yy]|[Yy][Ee][Ss])
+      # Select new USB device
+      while true; do
+        echo
+        echo "Select another USB device to write the same ISO to."
+        echo "Make sure to choose the correct device as all data on it will be erased!"
+        echo
+        echo "Available local drives:"
+        lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
+        echo
+        
+        read -p "Enter the device to write ISO to (e.g., sdb, nvme0n1): " NEW_USBDEV
+        
+        # Check if entered device is in the lsblk output and is a disk
+        if lsblk -d -o NAME,TYPE | grep -E "^$NEW_USBDEV\\s+disk" > /dev/null; then
+          # Prevent wiping the boot device
+          if [[ "$NEW_USBDEV" == "$BOOTDEV" ]]; then
+            echo
+            echo "ERROR: /dev/$NEW_USBDEV appears to be the boot device. Please choose another device."
+            read -p "Press Enter to continue..."
+            continue
+          fi
+          break
+        fi
+        echo
+        echo "Device /dev/$NEW_USBDEV is not a valid local disk from the list above. Please try again."
+        read -p "Press Enter to continue..."
+      done
+      
+      # Write ISO to new USB device
+      echo
+      echo "[*] Writing ISO to additional USB ($NEW_USBDEV)..."
+      echo "[*] This may take several minutes depending on USB speed..."
+      USB_START_TIME=$(date +%s)
+      dd if="$OUTISO" of="/dev/$NEW_USBDEV" bs=4M status=progress oflag=direct conv=fsync
+      sync
+      USB_END_TIME=$(date +%s)
+      USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
+      
+      echo
+      echo "[*] Additional USB ($NEW_USBDEV) flashing completed successfully!"
+      echo "[*] USB ($NEW_USBDEV) write completed in $((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
+      ;;
+    [Nn]|[Nn][Oo])
+      echo
+      echo "[*] No additional USBs will be created."
+      break
+      ;;
+    *)
+      echo
+      echo "Please answer yes (y) or no (n)."
+      ;;
+  esac
+done

@@ -500,18 +500,33 @@ if [ $SED_FAILED -gt 0 ]; then
     echo ">>> CONTINUING after pause <<<"
 fi
 
-# Ensure system tools are in PATH for all users
-# Create /etc/profile if it doesn't exist
-[ ! -f /etc/profile ] && touch /etc/profile
-echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin:/usr/local/bin' >> /etc/profile
-echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin:/usr/local/bin' >> /etc/bash.bashrc
+echo "[CHROOT] Configuring PATH to include sbin directories for all users..."
+# Fix the PATH issue - regular users don't have /usr/local/sbin and /usr/sbin in PATH by default
+# Modify /etc/profile to include sbin directories for all users
+sed -i 's|PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"|PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games"|' /etc/profile
 
-# Also add to /etc/environment (systemd and other services)
-[ ! -f /etc/environment ] && echo 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' > /etc/environment
+# Also add to bash.bashrc for interactive shells  
+echo 'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:$PATH"' >> /etc/bash.bashrc
+
+# Update /etc/environment for systemd services
+if [ -f /etc/environment ]; then
+  if grep -q "^PATH=" /etc/environment; then
+    sed -i 's|^PATH="\([^"]*\)"|PATH="/usr/local/sbin:/usr/local/bin:\1"|' /etc/environment
+  else
+    echo 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' >> /etc/environment
+  fi
+else
+  echo 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' > /etc/environment
+fi
 
 # Also add for live user's bashrc
 mkdir -p /home/user
-echo 'export PATH=$PATH:/usr/sbin:/sbin:/usr/local/sbin:/usr/local/bin' >> /home/user/.bashrc
+echo 'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:$PATH"' >> /home/user/.bashrc
+
+# Create a symlink in /usr/bin for easier access (backup approach)
+ln -sf /usr/local/sbin/sedutil-cli /usr/bin/sedutil-cli
+
+echo "[+] PATH configuration completed - sedutil-cli and other sbin tools should now be accessible to all users"
 
 echo "[CHROOT] Enabling NetworkManager service..."
 systemctl enable NetworkManager
@@ -849,7 +864,7 @@ while true; do
       # Select new USB device
       while true; do
         echo
-        echo "Select another USB device to write the same ISO to."
+        echo "Select the target USB device to write the ISO to."
         echo "Make sure to choose the correct device as all data on it will be erased!"
         echo
         echo "Available local drives:"
@@ -865,6 +880,7 @@ while true; do
             echo
             echo "ERROR: /dev/$NEW_USBDEV appears to be the boot device. Please choose another device."
             read -p "Press Enter to continue..."
+            clear
             continue
           fi
           break
@@ -872,11 +888,12 @@ while true; do
         echo
         echo "Device /dev/$NEW_USBDEV is not a valid local disk from the list above. Please try again."
         read -p "Press Enter to continue..."
+        clear
       done
       
       # Write ISO to new USB device
       echo
-      echo "[*] Writing ISO to additional USB ($NEW_USBDEV)..."
+      echo "[*] Writing ISO to USB ($NEW_USBDEV)..."
       echo "[*] This may take several minutes depending on USB speed..."
       USB_START_TIME=$(date +%s)
       dd if="$OUTISO" of="/dev/$NEW_USBDEV" bs=4M status=progress oflag=direct conv=fsync
@@ -885,7 +902,7 @@ while true; do
       USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
       
       echo
-      echo "[*] Additional USB ($NEW_USBDEV) flashing completed successfully!"
+      echo "[*] USB ($NEW_USBDEV) flashing completed successfully!"
       echo "[*] USB ($NEW_USBDEV) write completed in $((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
       ;;
     [Nn]|[Nn][Oo])
