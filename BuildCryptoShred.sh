@@ -427,7 +427,20 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get update
 apt-get -y full-upgrade
-apt-get -y install cryptsetup
+apt-get -y install wget ca-certificates cryptsetup
+
+echo "[*] Installing sedutil-cli for SED drive management..."
+# Download sedutil and extract archive
+wget "https://github.com/Drive-Trust-Alliance/exec/blob/master/sedutil_LINUX.tgz?raw=true" -O sedutil_LINUX.tgz
+tar -xf sedutil_LINUX.tgz
+
+# Move it into the system admin path and make executable
+mv sedutil/release_x86_64/sedutil-cli /usr/local/sbin/sedutil-cli
+chmod +x /usr/local/sbin/sedutil-cli
+
+# Clean up sedutil files
+rm -rf ./sedutil* ./sedutil_LINUX.tgz
+
 apt-get clean
 
 exit
