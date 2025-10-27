@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════════════════
 # EXECUTION COMMAND AND INITIAL SETUP
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -608,11 +608,15 @@ xorriso "${XORRISO_ARGS[@]}"
 
 echo
 echo "[*] Writing ISO to USB ($USBDEV)..."
+echo "[*] This may take several minutes depending on USB speed..."
+USB_START_TIME=$(date +%s)
 dd if="$OUTISO" of="/dev/$USBDEV" bs=4M status=progress oflag=direct conv=fsync
 sync
-
-echo
-echo "[+] Done. USB is ready!"
+USB_END_TIME=$(date +%s)
+USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
+FIRST_USB_ELAPSED=$((USB_END_TIME - START_TIME))
+echo "[*] USB ($USBDEV) write completed in $((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
+echo "[*] Script was started at: $(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). Total elapsed time for first USB: $((FIRST_USB_ELAPSED / 60)) min $((FIRST_USB_ELAPSED % 60)) sec"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # ADDITIONAL USB CREATION LOOP
@@ -654,17 +658,18 @@ while true; do
       
       # Write ISO to new USB device
       echo
-      echo "[*] Writing ISO to additional USB ($NEW_USBDEV)..."
+      echo "[*] Writing ISO to USB ($NEW_USBDEV)..."
       echo "[*] This may take several minutes depending on USB speed..."
       USB_START_TIME=$(date +%s)
       dd if="$OUTISO" of="/dev/$NEW_USBDEV" bs=4M status=progress oflag=direct conv=fsync
       sync
       USB_END_TIME=$(date +%s)
       USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
-      
+      THIS_USB_ELAPSED=$((USB_END_TIME - START_TIME))
       echo
-      echo "[*] Additional USB ($NEW_USBDEV) flashing completed successfully!"
+      echo "[*] USB ($NEW_USBDEV) flashing completed successfully!"
       echo "[*] USB ($NEW_USBDEV) write completed in $((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
+      echo "[*] Script was started at: $(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). Total elapsed time for THIS USB: $((THIS_USB_ELAPSED / 60)) min $((THIS_USB_ELAPSED % 60)) sec"
       ;;
     [Nn]|[Nn][Oo])
       echo
