@@ -286,10 +286,8 @@ if [ $CORE_FAILED -gt 0 ]; then
     echo ">>> CONTINUING after pause <<<"
 fi
 
-# Try to install openssh packages separately to handle version conflicts
-echo "[CHROOT] Installing SSH packages..."
-echo -e "${YELLOW}Checking package system status...${NC}"
-apt list --upgradable 2>/dev/null | head -5
+# Install SSH client only
+echo "[CHROOT] Installing SSH client..."
 echo -e "${YELLOW}Cleaning package system before SSH installation...${NC}"
 apt-get clean
 apt-get autoclean
@@ -297,50 +295,24 @@ apt-get autoremove -y
 dpkg --configure -a
 apt-get install -f -y
 
-echo -e "${YELLOW}Installing SSH packages: openssh-client openssh-server${NC}"
+echo -e "${YELLOW}Installing SSH client: openssh-client${NC}"
 SSH_SUCCESS=0
 SSH_FAILED=0
 
-# Try installing both together first (often works better)
-echo -e "${YELLOW}Attempting to install both SSH packages together...${NC}"
-if apt -y install openssh-client openssh-server; then
-    echo -e "${GREEN}✓ openssh-client and openssh-server: SUCCESS${NC}"
-    SSH_SUCCESS=2
-    INSTALLED_PACKAGES+=(openssh-client openssh-server)
+echo -e "${YELLOW}Installing openssh-client...${NC}"
+if apt -y install openssh-client; then
+    echo -e "${GREEN}✓ openssh-client: SUCCESS${NC}"
+    SSH_SUCCESS=1
+    INSTALLED_PACKAGES+=(openssh-client)
 else
-    echo -e "${YELLOW}Joint installation failed, trying individually...${NC}"
-    
-    # Install client first (required for server)
-    echo -e "${YELLOW}Installing openssh-client...${NC}"
-    if apt -y install openssh-client; then
-        echo -e "${GREEN}✓ openssh-client: SUCCESS${NC}"
-        SSH_SUCCESS=$((SSH_SUCCESS + 1))
-        INSTALLED_PACKAGES+=(openssh-client)
-        
-        # Only try server if client succeeded
-        echo -e "${YELLOW}Client installed successfully, attempting openssh-server...${NC}"
-        if apt -y install openssh-server; then
-            echo -e "${GREEN}✓ openssh-server: SUCCESS${NC}"
-            SSH_SUCCESS=$((SSH_SUCCESS + 1))
-            INSTALLED_PACKAGES+=(openssh-server)
-        else
-            echo -e "${RED}✗ openssh-server: FAILED (client installed but server failed)${NC}"
-            SSH_FAILED=$((SSH_FAILED + 1))
-            FAILED_PACKAGES+=(openssh-server)
-        fi
-    else
-        echo -e "${RED}✗ openssh-client: FAILED${NC}"
-        SSH_FAILED=$((SSH_FAILED + 1))
-        FAILED_PACKAGES+=(openssh-client)
-        echo -e "${YELLOW}⚠ Skipping openssh-server (requires openssh-client)${NC}"
-        SSH_FAILED=$((SSH_FAILED + 1))
-        FAILED_PACKAGES+=(openssh-server)
-    fi
+    echo -e "${RED}✗ openssh-client: FAILED${NC}"
+    SSH_FAILED=1
+    FAILED_PACKAGES+=(openssh-client)
 fi
-echo "SSH packages: $SSH_SUCCESS/2 succeeded"
+echo "SSH client: $SSH_SUCCESS/1 succeeded"
 if [ $SSH_FAILED -gt 0 ]; then
-    echo ">>> PAUSING: $SSH_FAILED SSH packages failed <<<"
-    echo "WARNING: $SSH_FAILED SSH packages failed."
+    echo ">>> PAUSING: SSH client failed <<<"
+    echo "WARNING: SSH client installation failed."
     echo "Sleeping for 10 seconds to allow screenshot..."
     sleep 10
     echo ">>> CONTINUING after pause <<<"
@@ -842,8 +814,12 @@ echo
 echo
 echo "[*] Writing ISO to USB ($USBDEV)..."
 echo "[*] This may take several minutes depending on USB speed..."
+USB_START_TIME=$(date +%s)
 dd if="$OUTISO" of="/dev/$USBDEV" bs=4M status=progress oflag=direct conv=fsync
 sync
+USB_END_TIME=$(date +%s)
+USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
+echo "[*] USB ($USBDEV) write completed in $((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # COMPLETION AND VERIFICATION
@@ -859,3 +835,67 @@ echo "• Key packages: nvme-cli, cryptsetup, sedutil-cli, network tools, lynx, 
 echo "• Network: NetworkManager enabled; WiFi is manual (use 'nmtui')"
 echo "• Helpers: /usr/local/bin/wifi-connect-manual.sh installed for manual WiFi connections"
 echo "============================================================================================"
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# ADDITIONAL USB CREATION LOOP
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+while true; do
+  echo
+  read -p "Create another USB? (y/n): " CREATE_ANOTHER
+  
+  case "$CREATE_ANOTHER" in
+    [Yy]|[Yy][Ee][Ss])
+      # Select new USB device
+      while true; do
+        echo
+        echo "Select another USB device to write the same ISO to."
+        echo "Make sure to choose the correct device as all data on it will be erased!"
+        echo
+        echo "Available local drives:"
+        lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
+        echo
+        
+        read -p "Enter the device to write ISO to (e.g., sdb, nvme0n1): " NEW_USBDEV
+        
+        # Check if entered device is in the lsblk output and is a disk
+        if lsblk -d -o NAME,TYPE | grep -E "^$NEW_USBDEV\\s+disk" > /dev/null; then
+          # Prevent wiping the boot device
+          if [[ "$NEW_USBDEV" == "$BOOTDEV" ]]; then
+            echo
+            echo "ERROR: /dev/$NEW_USBDEV appears to be the boot device. Please choose another device."
+            read -p "Press Enter to continue..."
+            continue
+          fi
+          break
+        fi
+        echo
+        echo "Device /dev/$NEW_USBDEV is not a valid local disk from the list above. Please try again."
+        read -p "Press Enter to continue..."
+      done
+      
+      # Write ISO to new USB device
+      echo
+      echo "[*] Writing ISO to additional USB ($NEW_USBDEV)..."
+      echo "[*] This may take several minutes depending on USB speed..."
+      USB_START_TIME=$(date +%s)
+      dd if="$OUTISO" of="/dev/$NEW_USBDEV" bs=4M status=progress oflag=direct conv=fsync
+      sync
+      USB_END_TIME=$(date +%s)
+      USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
+      
+      echo
+      echo "[*] Additional USB ($NEW_USBDEV) flashing completed successfully!"
+      echo "[*] USB ($NEW_USBDEV) write completed in $((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
+      ;;
+    [Nn]|[Nn][Oo])
+      echo
+      echo "[*] No additional USBs will be created."
+      break
+      ;;
+    *)
+      echo
+      echo "Please answer yes (y) or no (n)."
+      ;;
+  esac
+done
