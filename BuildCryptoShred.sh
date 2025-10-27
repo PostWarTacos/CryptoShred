@@ -6,8 +6,8 @@
 
 # RUN THIS SCRIPT WITH THE EXACT COMMAND BELOW
 # DO NOT USE RELATIVE PATHS
-# sudo -i bash -lc 'exec 3>/tmp/build-trace.log; export BASH_XTRACEFD=3; export PS4="+ $(date +%H:%M:%S) ${BASH_SOURCE}:${LINENO}: "; DEBUG=1 /home/matt/Documents/CryptoShred/BuildCryptoShred.sh'
-# Replace matt with your username and adjust path as needed.
+# sudo -i bash -lc 'exec 3>/tmp/build-trace.log; export BASH_XTRACEFD=3; export PS4="+ $(date +%H:%M:%S) ${BASH_SOURCE}:${LINENO}: "; DEBUG=1 /home/USERNAME/Documents/CryptoShred/BuildCryptoShred.sh'
+# Replace USERNAME with your actual username and adjust path as needed.
 
 set -euo pipefail
 clear
@@ -251,65 +251,55 @@ cd "$WORKDIR"
 # CRYPTOSHRED SCRIPT PREPARATION
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-# === Hash-based CryptoShred.sh update check (DISABLED) ===
-# Uncomment the following section to enable hash-based CryptoShred.sh checking
-# REMOTE_CRYPTOSHRED_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/CryptoShred.sh"
-# LOCAL_CRYPTOSHRED="$(dirname "$0")/CryptoShred.sh"
-
-# echo
-# echo "[*] Checking CryptoShred.sh for updates using hash comparison..."
-
-# # Check if local file exists
-# if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
-#   echo "[!] Local CryptoShred.sh not found at $LOCAL_CRYPTOSHRED"
-#   echo "[*] Downloading from remote..."
-#   mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
-#   if ! curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$CRYPTOSHRED_SCRIPT"; then
-#     echo "[!] Failed to download CryptoShred.sh from $REMOTE_CRYPTOSHRED_URL"
-#     exit 1
-#   fi
-# else
-#   # Calculate hash of local CryptoShred.sh
-#   LOCAL_CS_HASH=$(sha256sum "$LOCAL_CRYPTOSHRED" | cut -d' ' -f1)
-#   
-#   # Download remote version and calculate its hash
-#   REMOTE_CS_TEMP="$(mktemp)"
-#   if curl -s "$REMOTE_CRYPTOSHRED_URL" -o "$REMOTE_CS_TEMP"; then
-#     REMOTE_CS_HASH=$(sha256sum "$REMOTE_CS_TEMP" | cut -d' ' -f1)
-#     
-#     # Compare hashes
-#     if [ "$LOCAL_CS_HASH" != "$REMOTE_CS_HASH" ]; then
-#       echo "[!] Local CryptoShred.sh differs from remote version."
-#       echo "    Local:  $LOCAL_CS_HASH"
-#       echo "    Remote: $REMOTE_CS_HASH"  
-#       echo "[*] Using remote version for this build..."
-#       mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
-#       cp "$REMOTE_CS_TEMP" "$CRYPTOSHRED_SCRIPT"
-#     else
-#       echo "[+] CryptoShred.sh is up to date (hash: ${LOCAL_CS_HASH:0:16}...)"
-#       echo "[*] Using local version..."
-#       mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
-#       cp "$LOCAL_CRYPTOSHRED" "$CRYPTOSHRED_SCRIPT"
-#     fi
-#     rm "$REMOTE_CS_TEMP"
-#   else
-#     echo "[!] Warning: Could not download remote CryptoShred.sh for comparison."
-#     echo "[*] Using local version..."
-#     mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
-#     cp "$LOCAL_CRYPTOSHRED" "$CRYPTOSHRED_SCRIPT"
-#   fi
-# fi
-
 # === Simple local copy approach ===
-LOCAL_CRYPTOSHRED="$(dirname "$0")/CryptoShred.sh"
+# Handle path resolution when script is run with sudo -i (which changes to root's environment)
+# Try multiple methods to find the script directory
+SCRIPT_DIR=""
+
+# Method 1: Check if $0 contains full path
+if [[ "$0" == /* ]]; then
+  SCRIPT_DIR="$(dirname "$0")"
+# Method 2: Check BASH_SOURCE array
+elif [ -n "${BASH_SOURCE[0]:-}" ] && [[ "${BASH_SOURCE[0]}" == /* ]]; then
+  SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+# Method 3: Extract from command line (when run with the specific sudo command)
+elif command -v pgrep >/dev/null 2>&1; then
+  # Try to find the full path from the process command line
+  CMDLINE=$(cat /proc/$$/cmdline 2>/dev/null | tr '\0' ' ' | grep -o '/[^ ]*BuildCryptoShred\.sh' | head -1)
+  if [ -n "$CMDLINE" ]; then
+    SCRIPT_DIR="$(dirname "$CMDLINE")"
+  fi
+fi
+
+# Fallback: Use dynamic path based on the user who ran sudo
+if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR" ]; then
+  if [ -n "${SUDO_USER:-}" ]; then
+    USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    SCRIPT_DIR="$USER_HOME/Documents/CryptoShred"
+  else
+    # Ultimate fallback if SUDO_USER is not set
+    SCRIPT_DIR="/home/$(logname 2>/dev/null || echo "user")/Documents/CryptoShred"
+  fi
+  echo "[WARN] Using fallback script directory: $SCRIPT_DIR"
+fi
+
+LOCAL_CRYPTOSHRED="$SCRIPT_DIR/CryptoShred.sh"
 
 echo
 echo "[*] Using local CryptoShred.sh from directory..."
+echo "[DEBUG] Script directory: $SCRIPT_DIR"
+echo "[DEBUG] Looking for CryptoShred.sh at: $LOCAL_CRYPTOSHRED"
 
 # Check if local file exists
 if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
   echo "[!] Error: Local CryptoShred.sh not found at $LOCAL_CRYPTOSHRED"
   echo "[!] Please ensure CryptoShred.sh is in the same directory as BuildCryptoShred.sh"
+  echo "[DEBUG] Current working directory: $(pwd)"
+  echo "[DEBUG] \$0 = $0"
+  echo "[DEBUG] BASH_SOURCE[0] = ${BASH_SOURCE[0]:-unset}"
+  echo "[DEBUG] Process cmdline: $(cat /proc/$$/cmdline 2>/dev/null | tr '\0' ' ')"
+  echo "[DEBUG] Files in script directory:"
+  ls -la "$SCRIPT_DIR/" 2>/dev/null || echo "Cannot list script directory"
   exit 1
 fi
 
