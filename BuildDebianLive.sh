@@ -835,8 +835,8 @@ sync
 USB_END_TIME=$(date +%s)
 USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
 FIRST_USB_ELAPSED=$((USB_END_TIME - START_TIME))
-echo "[*] USB ($USBDEV) write completed in $((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
-echo "[*] Script was started at: $(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). Total elapsed time for first USB: $((FIRST_USB_ELAPSED / 60)) min $((FIRST_USB_ELAPSED % 60)) sec"
+echo "[*] USB ($USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
+echo "[*] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). Total elapsed time for first USB: $((FIRST_USB_ELAPSED / 60)) min $((FIRST_USB_ELAPSED % 60)) sec"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # COMPLETION AND VERIFICATION
@@ -905,8 +905,8 @@ while true; do
       THIS_USB_ELAPSED=$((USB_END_TIME - START_TIME))
       echo
       echo "[*] USB ($NEW_USBDEV) flashing completed successfully!"
-      echo "[*] USB ($NEW_USBDEV) write completed in $((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
-      echo "[*] Script was started at: $(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). Total elapsed time for THIS USB: $((THIS_USB_ELAPSED / 60)) min $((THIS_USB_ELAPSED % 60)) sec"
+      echo "[*] USB ($NEW_USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
+      echo "[*] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). Total elapsed time for THIS USB: $((THIS_USB_ELAPSED / 60)) min $((THIS_USB_ELAPSED % 60)) sec"
       ;;
     [Nn]|[Nn][Oo])
       echo
