@@ -67,15 +67,17 @@ prompt_read() {
 # WELCOME AND INTRODUCTION
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-echo "==========================================================================================="
+echo "================================================= CryptoShred ===================================================="
 echo
-echo "CryptoShred - Securely encrypt and destroy key"
-echo "Version 1.5 - 2025-10-01"  
-echo "This script will encrypt an entire local drive with a random key, making all data"
-echo "on it permanently inaccessible. It supports both Opal hardware encryption (if"
-echo "available) and software LUKS2 encryption as a fallback."
+echo "${GREEN}CryptoShred - Securely encrypt and destroy key${NC}"
+echo "Version 1.6 - 2025-10-29"
 echo
-echo "==========================================================================================="
+echo "This script will encrypt an entire local drive with a random key, making all data on it permanently inaccessible."
+echo "It supports both Opal hardware encryption (if available) and software LUKS2 encryption as a fallback."
+echo
+echo -e "${RED}IMPORTANT!!! Make sure your target USB device (device to be encrypted/destroyed) is plugged in.${NC}"
+echo
+echo "=================================================================================================================="
 echo
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════

@@ -173,10 +173,10 @@ done
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "================================================= CryptoShred ISO Builder ================================================="
+echo "================================================== CryptoShred ISO Builder =================================================="
 echo
-echo "CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed"
-echo "Version 1.6 - 2025-10-02"
+echo "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
+echo "Version 1.7 - 2025-10-29"
 echo
 echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
 echo "The resulting ISO will be written directly to the specified USB device."
@@ -185,7 +185,7 @@ echo "WARNING: This will ERASE ALL DATA on the specified USB device."
 echo
 echo -e "${RED}IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in.${NC}"
 echo
-echo "==========================================================================================================================="
+echo "============================================================================================================================="
 echo
 read -p "Press Enter to continue..."
 
