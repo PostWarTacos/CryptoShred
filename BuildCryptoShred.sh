@@ -297,58 +297,48 @@ fi
 # DOWNLOAD OR UPDATE CRYPTOSHRED.SH
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-LOCAL_CRYPTOSHRED="$SCRIPT_DIR/CryptoShred.sh"
+REMOTE_HASH=$(sha256sum "$TMP_REMOTE" | cut -d' ' -f1 2>/dev/null || true)
+LOCAL_HASH=$([ -f "$LOCAL_CRYPTOSHRED" ] && sha256sum "$LOCAL_CRYPTOSHRED" | cut -d' ' -f1 || echo "")
 
-# Compare local CryptoShred.sh hash with remote and atomically replace if different.
-REMOTE_CRYPTO="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/CryptoShred.sh"
-echo
-echo -e "${YELLOW}[*] Checking local CryptoShred.sh against remote version...${NC}"
-TMP_REMOTE="$(mktemp 2>/dev/null || echo /tmp/cryptoshred.remote.$$)"
-if curl -sS "$REMOTE_CRYPTO" -o "$TMP_REMOTE"; then
-  REMOTE_HASH=$(sha256sum "$TMP_REMOTE" | cut -d' ' -f1 2>/dev/null || true)
-  LOCAL_HASH=$([ -f "$LOCAL_CRYPTOSHRED" ] && sha256sum "$LOCAL_CRYPTOSHRED" | cut -d' ' -f1 || echo "")
-
-  # Install/update if local is missing OR hashes differ
-  if [ ! -f "$LOCAL_CRYPTOSHRED" ] || { [ -n "$LOCAL_HASH" ] && [ -n "$REMOTE_HASH" ] && [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; }; then
-    echo
-    echo -e "${YELLOW}[*] Installing/Updating local CryptoShred.sh from remote...${NC}"
-    echo "    Local:  ${LOCAL_HASH:-<missing>}"
-    echo "    Remote: ${REMOTE_HASH:-<unknown>}"
-    ORIG_PERMS=$(stat -c %a "$LOCAL_CRYPTOSHRED" 2>/dev/null || echo 0755)
-    chmod +x "$TMP_REMOTE" || true
-    if command -v install >/dev/null 2>&1; then
-        install -m "$ORIG_PERMS" "$TMP_REMOTE" "$LOCAL_CRYPTOSHRED" || {
-            echo -e "${RED}[!] Install failed. Exiting script.${NC}"
-            exit 1
-        }
-    else
-        mkdir -p "$(dirname "$LOCAL_CRYPTOSHRED")"
-        cp -- "$TMP_REMOTE" "$LOCAL_CRYPTOSHRED" || {
-            echo -e "${RED}[!] Copy failed. Exiting script.${NC}"
-            exit 1
-        }
-        chmod "$ORIG_PERMS" "$LOCAL_CRYPTOSHRED" || true
-    fi
-    sync "$LOCAL_CRYPTOSHRED" || true
-    echo -e "${GREEN}[+] Local CryptoShred.sh installed/updated at $LOCAL_CRYPTOSHRED${NC}"
-  else
-    echo -e "${GREEN}[+] Local CryptoShred.sh is up to date (hash: ${LOCAL_HASH:0:16}...)${NC}"
-  fi
-  rm -f "$TMP_REMOTE"
-else
-  # Could not fetch remote: if local exists, continue; if not, abort because we have nothing to copy into the ISO
-  if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
-    echo -e "${RED}[!] Failed to download remote CryptoShred.sh and local copy does not exist. Aborting.${NC}"
-    [ -f "$TMP_REMOTE" ] && rm -f "$TMP_REMOTE"
-    exit 1
-  else
-    echo -e "${RED}[!] Could not download remote CryptoShred.sh; continuing with existing local copy at $LOCAL_CRYPTOSHRED${NC}"
-    [ -f "$TMP_REMOTE" ] && rm -f "$TMP_REMOTE"
-  fi
+# Decide whether to install/update: missing local OR remote hash present and different
+UPDATE_LOCAL=0
+if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
+  UPDATE_LOCAL=1
+elif [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
+  UPDATE_LOCAL=1  
+elif [ -z "$REMOTE_HASH" ]; then
+  # no remote hash -> don't update
+  echo "${RED}[!] Remote hash unavailable; skipping update.${NC}"
+  UPDATE_LOCAL=2
 fi
 
-echo
-echo -e "${GREEN}[+] Using local CryptoShred.sh from: ${LOCAL_CRYPTOSHRED} (script dir: ${SCRIPT_DIR})${NC}"
+if [ "$UPDATE_LOCAL" -eq 1 ]; then
+  echo
+  echo -e "${YELLOW}[*] Installing/Updating local CryptoShred.sh from remote...${NC}"
+  echo "    Local:  ${LOCAL_HASH:-<missing>}"
+  echo "    Remote: ${REMOTE_HASH:-<unknown>}"
+  ORIG_PERMS=$(stat -c %a "$LOCAL_CRYPTOSHRED" 2>/dev/null || echo 0755)
+  chmod +x "$TMP_REMOTE" || true
+  if command -v install >/dev/null 2>&1; then
+      install -m "$ORIG_PERMS" "$TMP_REMOTE" "$LOCAL_CRYPTOSHRED" || {
+          echo -e "${RED}[!] Install failed. Exiting script.${NC}"
+          exit 1
+      }
+  else
+      mkdir -p "$(dirname "$LOCAL_CRYPTOSHRED")"
+      cp -- "$TMP_REMOTE" "$LOCAL_CRYPTOSHRED" || {
+          echo -e "${RED}[!] Copy failed. Exiting script.${NC}"
+          exit 1
+      }
+      chmod "$ORIG_PERMS" "$LOCAL_CRYPTOSHRED" || true
+  fi
+  sync "$LOCAL_CRYPTOSHRED" || true
+  echo -e "${GREEN}[+] Local CryptoShred.sh installed/updated at $LOCAL_CRYPTOSHRED${NC}"
+elif [ "$UPDATE_LOCAL" -eq 2 ]; then
+  echo -e "${YELLOW}[*] Skipping local CryptoShred.sh update due to unavailable remote hash.${NC}"
+else
+  echo -e "${GREEN}[+] Local CryptoShred.sh is up to date (hash: ${LOCAL_HASH:0:16}...)${NC}"
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # DEBIAN ISO DOWNLOAD
