@@ -97,8 +97,8 @@ finish() {
   END_TS=$(date +"%Y-%m-%d %H:%M:%S %z")
   ELAPSED=$((END_TIME - START_TIME))
   echo
-  echo -e "${GREEN}[TIME] End: $END_TS"
-  echo -e "${GREEN}[TIME] Elapsed: ${YELLOW}$((ELAPSED / 60)) min $((ELAPSED % 60)) sec${NC}"
+  echo -e "${GREEN}[+] Time End: $END_TS"
+  echo -e "${GREEN}[+] Time Elapsed: ${YELLOW}$((ELAPSED / 60)) min $((ELAPSED % 60)) sec${NC}"
 }
 trap finish EXIT
 
@@ -108,11 +108,11 @@ trap finish EXIT
 
 # === Verify required tools are installed on local host ===
 echo
-echo "[*] Checking for required tools..."
+echo "${YELLOW}[*] Checking for required tools...${NC}"
 for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo
-    echo "[!] $cmd is not installed. Attempting to install..."
+    echo "${RED}[!] $cmd is not installed. Attempting to install...${NC}"
     apt-get update
     if [ "$cmd" = "7z" ]; then
       apt-get install -y p7zip-full
@@ -123,7 +123,7 @@ for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
     fi
     if ! command -v "$cmd" >/dev/null 2>&1; then
       echo
-      echo "[!] Failed to install $cmd. Please install it manually."
+      echo "${RED}[!] Failed to install $cmd. Please install it manually.${NC}"
       read -p "Press Enter to continue..."
       exit 1
     fi
@@ -134,39 +134,42 @@ done
 # UPDATE CHECKING (DISABLED)
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-# === Hash-based update check (DISABLED) ===
-# Uncomment the following section to enable hash-based auto-updating
-# REMOTE_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/BuildCryptoShred.sh"
+# === Hash-based update check ===
+REMOTE_URL="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/BuildCryptoShred.sh"
 
-# # Calculate hash of current script
-# LOCAL_HASH=$(sha256sum "$0" | cut -d' ' -f1)
+# Calculate hash of current script
+LOCAL_HASH=$(sha256sum "$0" | cut -d' ' -f1)
 
-# # Download remote script to temp file and calculate its hash
-# echo
-# echo "[*] Checking for BuildCryptoShred.sh updates using hash comparison..."
-# REMOTE_SCRIPT="$(mktemp)"
-# if curl -s "$REMOTE_URL" -o "$REMOTE_SCRIPT"; then
-#   REMOTE_HASH=$(sha256sum "$REMOTE_SCRIPT" | cut -d' ' -f1)
-#   
-#   # Compare hashes
-#   if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
-#     echo
-#     echo "[!] Local script hash differs from remote version."
-#     echo "    Local:  $LOCAL_HASH"
-#     echo "    Remote: $REMOTE_HASH"
-#     echo "    Updating local script with the latest version..."
-#     cp "$REMOTE_SCRIPT" "$0"
-#     echo
-#     echo "[+] Script updated. Please re-run BuildCryptoShred.sh."
-#     rm "$REMOTE_SCRIPT"
-#     exit 0
-#   else
-#     echo "[+] BuildCryptoShred.sh is up to date (hash: ${LOCAL_HASH:0:16}...)"
-#   fi
-#   rm "$REMOTE_SCRIPT"
-# else
-#   echo "[!] Warning: Could not download remote script for comparison. Continuing with local version."
-# fi
+# Download remote script to temp file and calculate its hash
+echo
+echo -e "${YELLOW}[*] Checking for BuildCryptoShred.sh updates using hash comparison...${NC}"
+REMOTE_SCRIPT="$(mktemp)"
+if curl -s "$REMOTE_URL" -o "$REMOTE_SCRIPT"; then
+  REMOTE_HASH=$(sha256sum "$REMOTE_SCRIPT" | cut -d' ' -f1)
+  
+# Compare hashes
+  if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
+    echo
+    echo -e "${RED}[!] Local script hash differs from remote version.${NC}"
+    echo "    Local:  $LOCAL_HASH"
+    echo "    Remote: $REMOTE_HASH"
+    echo "    Updating local script with the latest version..."
+    # Preserve original permissions, install atomically and ensure executable
+    ORIG_PERMS=$(stat -c %a "$0" 2>/dev/null || echo 0755)
+    chmod +x "$REMOTE_SCRIPT"
+    install -m "$ORIG_PERMS" "$REMOTE_SCRIPT" "$0"
+    sync "$0"
+    echo
+    echo -e "${GREEN}[+] Script updated. Please re-run BuildCryptoShred.sh.${NC}"
+    rm "$REMOTE_SCRIPT"
+    exit 0
+  else
+    echo -e "${GREEN}[+] BuildCryptoShred.sh is up to date (hash: ${LOCAL_HASH:0:16}...)${NC}"
+  fi
+  rm "$REMOTE_SCRIPT"
+else
+  echo -e "${RED}[!] Could not download remote script for comparison. Continuing with local version.${NC}"
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # INTRODUCTION AND USER CONFIRMATION
@@ -176,7 +179,7 @@ echo
 echo "================================================== CryptoShred ISO Builder =================================================="
 echo
 echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
-echo "Version 1.7.1 - 2025-10-29"
+echo "Version 1.8 - 2025-10-29"
 echo
 echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
 echo "The resulting ISO will be written directly to the specified USB device."
@@ -290,29 +293,62 @@ if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR" ]; then
   echo "[WARN] Using fallback script directory: $SCRIPT_DIR"
 fi
 
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# DOWNLOAD OR UPDATE CRYPTOSHRED.SH
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 LOCAL_CRYPTOSHRED="$SCRIPT_DIR/CryptoShred.sh"
 
+# Compare local CryptoShred.sh hash with remote and atomically replace if different.
+REMOTE_CRYPTO="https://raw.githubusercontent.com/PostWarTacos/CryptoShred/refs/heads/main/CryptoShred.sh"
 echo
-echo -e "${YELLOW}[*] Using local CryptoShred.sh from: ${LOCAL_CRYPTOSHRED} (script dir: ${SCRIPT_DIR})${NC}"
-echo "[DEBUG] Script directory: $SCRIPT_DIR"
-echo "[DEBUG] Looking for CryptoShred.sh at: $LOCAL_CRYPTOSHRED"
+echo -e "${YELLOW}[*] Checking local CryptoShred.sh against remote version...${NC}"
+TMP_REMOTE="$(mktemp 2>/dev/null || echo /tmp/cryptoshred.remote.$$)"
+if curl -sS "$REMOTE_CRYPTO" -o "$TMP_REMOTE"; then
+  REMOTE_HASH=$(sha256sum "$TMP_REMOTE" | cut -d' ' -f1 2>/dev/null || true)
+  LOCAL_HASH=$([ -f "$LOCAL_CRYPTOSHRED" ] && sha256sum "$LOCAL_CRYPTOSHRED" | cut -d' ' -f1 || echo "")
 
-# Check if local file exists
-if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
-  echo -e "${RED}[!] Error: Local CryptoShred.sh not found at $LOCAL_CRYPTOSHRED${NC}"
-  echo -e "${RED}[!] Please ensure CryptoShred.sh is in the same directory as BuildCryptoShred.sh${NC}"
-  echo "[DEBUG] Current working directory: $(pwd)"
-  echo "[DEBUG] \$0 = $0"
-  echo "[DEBUG] BASH_SOURCE[0] = ${BASH_SOURCE[0]:-unset}"
-  echo "[DEBUG] Process cmdline: $(cat /proc/$$/cmdline 2>/dev/null | tr '\0' ' ')"
-  echo "[DEBUG] Files in script directory:"
-  ls -la "$SCRIPT_DIR/" 2>/dev/null || echo -e "${RED}Cannot list script directory: $SCRIPT_DIR${NC}"
-  exit 1
+  # Install/update if local is missing OR hashes differ
+  if [ ! -f "$LOCAL_CRYPTOSHRED" ] || { [ -n "$LOCAL_HASH" ] && [ -n "$REMOTE_HASH" ] && [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; }; then
+    echo
+    echo -e "${YELLOW}[*] Installing/Updating local CryptoShred.sh from remote...${NC}"
+    echo "    Local:  ${LOCAL_HASH:-<missing>}"
+    echo "    Remote: ${REMOTE_HASH:-<unknown>}"
+    ORIG_PERMS=$(stat -c %a "$LOCAL_CRYPTOSHRED" 2>/dev/null || echo 0755)
+    chmod +x "$TMP_REMOTE" || true
+    if command -v install >/dev/null 2>&1; then
+        install -m "$ORIG_PERMS" "$TMP_REMOTE" "$LOCAL_CRYPTOSHRED" || {
+            echo -e "${RED}[!] Install failed. Exiting script.${NC}"
+            exit 1
+        }
+    else
+        mkdir -p "$(dirname "$LOCAL_CRYPTOSHRED")"
+        cp -- "$TMP_REMOTE" "$LOCAL_CRYPTOSHRED" || {
+            echo -e "${RED}[!] Copy failed. Exiting script.${NC}"
+            exit 1
+        }
+        chmod "$ORIG_PERMS" "$LOCAL_CRYPTOSHRED" || true
+    fi
+    sync "$LOCAL_CRYPTOSHRED" || true
+    echo -e "${GREEN}[+] Local CryptoShred.sh installed/updated at $LOCAL_CRYPTOSHRED${NC}"
+  else
+    echo -e "${GREEN}[+] Local CryptoShred.sh is up to date (hash: ${LOCAL_HASH:0:16}...)${NC}"
+  fi
+  rm -f "$TMP_REMOTE"
+else
+  # Could not fetch remote: if local exists, continue; if not, abort because we have nothing to copy into the ISO
+  if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
+    echo -e "${RED}[!] Failed to download remote CryptoShred.sh and local copy does not exist. Aborting.${NC}"
+    [ -f "$TMP_REMOTE" ] && rm -f "$TMP_REMOTE"
+    exit 1
+  else
+    echo -e "${RED}[!] Could not download remote CryptoShred.sh; continuing with existing local copy at $LOCAL_CRYPTOSHRED${NC}"
+    [ -f "$TMP_REMOTE" ] && rm -f "$TMP_REMOTE"
+  fi
 fi
 
-echo -e "${GREEN}[+] Found local CryptoShred.sh at: ${LOCAL_CRYPTOSHRED}${NC}"
-mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
-cp "$LOCAL_CRYPTOSHRED" "$CRYPTOSHRED_SCRIPT"
+echo
+echo -e "${GREEN}[+] Using local CryptoShred.sh from: ${LOCAL_CRYPTOSHRED} (script dir: ${SCRIPT_DIR})${NC}"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # DEBIAN ISO DOWNLOAD
@@ -543,8 +579,8 @@ mksquashfs edit iso/live/filesystem.squashfs -noappend -e boot
 # Verify the cryptoshred service and its enablement symlink exist in the edit tree
 if [ ! -f "edit/etc/systemd/system/cryptoshred.service" ] || [ ! -L "edit/etc/systemd/system/sysinit.target.wants/cryptoshred.service" ]; then
   echo
-  echo -e "${RED}[ERROR] cryptoshred.service or its enablement symlink is missing from the edit tree after squashfs rebuild.${NC}"
-  echo -e "${RED}[ERROR] Please check edit/etc/systemd/system and edit/etc/systemd/system/sysinit.target.wants${NC}"
+  echo -e "${RED}[!] cryptoshred.service or its enablement symlink is missing from the edit tree after squashfs rebuild.${NC}"
+  echo -e "${RED}[!] Please check edit/etc/systemd/system and edit/etc/systemd/system/sysinit.target.wants${NC}"
   exit 1
 fi
 
@@ -568,19 +604,19 @@ ISOHYBRID_MBR_OPT=""
 for cand in "${ISOHYBRID_CANDIDATES[@]}"; do
   if [ -f "$cand" ]; then
     ISOHYBRID_MBR_OPT=( -isohybrid-mbr "$cand" )
-    echo -e "${YELLOW}[INFO] Using isohybrid MBR from: $cand${NC}"
+    echo -e "${YELLOW}[*] Using isohybrid MBR from: $cand${NC}"
     break
   fi
 done
 if [ -z "${ISOHYBRID_MBR_OPT[*]:-}" ]; then
-  echo -e "${RED}[WARN] isohdpfx.bin not found in known locations; proceeding without -isohybrid-mbr.${NC}"
-  echo -e "${RED}[WARN] This may affect BIOS bootability on some systems.${NC}"
+  echo -e "${RED}[!] isohdpfx.bin not found in known locations; proceeding without -isohybrid-mbr.${NC}"
+  echo -e "${RED}[!] This may affect BIOS bootability on some systems.${NC}"
 fi
 
 # Build the ISO. Use the computed ISOHYBRID_MBR_OPT (may be empty).
 ISO_ROOT="$WORKDIR/iso"
 if [ ! -d "$ISO_ROOT" ]; then
-  echo -e "${RED}[ERROR] ISO root directory not found at $ISO_ROOT${NC}"
+  echo -e "${RED}[!] ISO root directory not found at $ISO_ROOT${NC}"
   exit 1
 fi
 
@@ -597,7 +633,7 @@ EFI_OPT=()
 if [ -f "$ISO_ROOT/boot/grub/efi.img" ]; then
   EFI_OPT=( -eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot -isohybrid-gpt-basdat )
 else
-  echo -e "${RED}[WARN] EFI image boot/grub/efi.img not found in $ISO_ROOT; skipping EFI options.${NC}"
+  echo -e "${RED}[!] EFI image boot/grub/efi.img not found in $ISO_ROOT; skipping EFI options.${NC}"
 fi
 
 # Build argument array safely and run xorriso
@@ -609,7 +645,7 @@ XORRISO_ARGS+=( "${ISOLINUX_OPTIONS[@]}" )
 XORRISO_ARGS+=( "${EFI_OPT[@]}" )
 XORRISO_ARGS+=( "$ISO_ROOT" )
 
-echo -e "${YELLOW}[INFO] Running: xorriso ${XORRISO_ARGS[*]}${NC}"
+echo -e "${YELLOW}[*] Running: xorriso ${XORRISO_ARGS[*]}${NC}"
 xorriso "${XORRISO_ARGS[@]}"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -625,8 +661,8 @@ sync
 USB_END_TIME=$(date +%s)
 USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
 FIRST_USB_ELAPSED=$((USB_END_TIME - START_TIME))
-echo -e "${GREEN}[*] USB ($USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec${NC}"
-echo -e "${GREEN}[*] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). ${GREEN}Total elapsed time for first USB: ${YELLOW}$((FIRST_USB_ELAPSED / 60)) min $((FIRST_USB_ELAPSED % 60)) sec${NC}"
+echo -e "${GREEN}[+] USB ($USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec${NC}"
+echo -e "${GREEN}[+] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). ${GREEN}Total elapsed time for first USB: ${YELLOW}$((FIRST_USB_ELAPSED / 60)) min $((FIRST_USB_ELAPSED % 60)) sec${NC}"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # ADDITIONAL USB CREATION LOOP
@@ -678,13 +714,13 @@ while true; do
       USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
       THIS_USB_ELAPSED=$((USB_END_TIME - START_TIME))
       echo
-      echo -e "${GREEN}[*] USB ($NEW_USBDEV) flashing completed successfully!${NC}"
-      echo -e "${GREEN}[*] USB ($NEW_USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec${NC}"
-      echo -e "${GREEN}[*] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). ${GREEN}Total elapsed time for THIS USB: ${YELLOW}$((THIS_USB_ELAPSED / 60)) min $((THIS_USB_ELAPSED % 60)) sec${NC}"
+      echo -e "${GREEN}[+] USB ($NEW_USBDEV) flashing completed successfully!${NC}"
+      echo -e "${GREEN}[+] USB ($NEW_USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec${NC}"
+      echo -e "${GREEN}[+] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). ${GREEN}Total elapsed time for THIS USB: ${YELLOW}$((THIS_USB_ELAPSED / 60)) min $((THIS_USB_ELAPSED % 60)) sec${NC}"
       ;;
     [Nn]|[Nn][Oo])
       echo
-      echo -e "${GREEN}[*] No additional USBs will be created.${NC}"
+      echo -e "${GREEN}[+] No additional USBs will be created.${NC}"
       break
       ;;
     *)
