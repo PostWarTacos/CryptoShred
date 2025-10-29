@@ -324,21 +324,22 @@ echo "Device size: $DEVICE_SIZE sectors ($(( DEVICE_SIZE * 512 / 1024 / 1024 / 1
 # Check Opal first
 echo
 echo  "Checking for Opal hardware encryption support..."
-if sedutil-cli --query /dev/$DEV 2>/dev/null; then
-    echo "Opal-compatible drive detected. Using hardware encryption..."
-    if sudo cryptsetup luksFormat /dev/$DEV --hw-opal-only --batch-mode; then
-        echo "SUCCESS: Opal encryption enabled on /dev/$DEV."
-        echo "No filesystem created, drive encrypts transparently."
-        echo "Data is permanently inaccessible."
-        echo
-        prompt_enter "Press Enter to continue..."
-        clear
-        exit 0
-    else
-        echo "ERROR: Failed to enable Opal encryption on /dev/$DEV!"
-        echo "Falling back to software LUKS2..."
-        echo
-    fi
+# Query sedutil and inspect output for a locked state. Capture output so we can both detect support
+# and look for "Locked = Y". Be tolerant of whitespace/case.
+SEDOUT=$(sedutil-cli --query /dev/$DEV 2>/dev/null || true)
+
+if printf '%s' "$SEDOUT" | grep -qE '^[[:space:]]*Locked[[:space:]]*=[[:space:]]*[Yy]([[:space:]]*,.*)?$'; then
+  echo "Opal-compatible drive detected but device reports 'Locked = Y' (already locked)."
+  echo "No further action required — drive is already sealed."
+  prompt_enter "Press Enter to continue..."
+  clear
+  exit 0
+elif printf '%s' "$SEDOUT" | grep -q .; then
+  # Drive supports Opal, but preference is to use LUKS2 software encryption.
+  echo "Opal-compatible drive detected — preference is software LUKS2, skipping hw-opal enablement."
+  echo "Falling through to LUKS2 software encryption."
+  echo
+  # Do NOT attempt --hw-opal-only here, proceed to LUKS2 section below.
 else 
   echo "Opal not supported. Falling back to software LUKS2 (AES-XTS)."
 fi
