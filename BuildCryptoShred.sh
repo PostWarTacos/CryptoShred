@@ -175,7 +175,7 @@ done
 echo
 echo "================================================== CryptoShred ISO Builder =================================================="
 echo
-echo "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
+echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
 echo "Version 1.7 - 2025-10-29"
 echo
 echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
@@ -645,7 +645,7 @@ while true; do
         echo "Select another USB device to write the same ISO to.${NC}"
         echo -e "${RED}Make sure to choose the correct device as all data on it will be erased!${NC}"
         echo
-        echo "${YELLOW}Available local drives:${NC}"
+        echo -e "${YELLOW}Available local drives:${NC}"
         lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
         echo
         
@@ -656,14 +656,14 @@ while true; do
           # Prevent wiping the boot device
           if [[ "$NEW_USBDEV" == "$BOOTDEV" ]]; then
             echo
-            echo "${RED}ERROR: /dev/$NEW_USBDEV appears to be the boot device. Please choose another device.${NC}"
+            echo -e "${RED}ERROR: /dev/$NEW_USBDEV appears to be the boot device. Please choose another device.${NC}"
             read -p "Press Enter to continue..."
             continue
           fi
           break
         fi
         echo
-        echo "${RED}Device /dev/$NEW_USBDEV is not a valid local disk from the list above. Please try again.${NC}"
+        echo -e "${RED}Device /dev/$NEW_USBDEV is not a valid local disk from the list above. Please try again.${NC}"
         read -p "Press Enter to continue..."
       done
       
@@ -684,7 +684,7 @@ while true; do
       ;;
     [Nn]|[Nn][Oo])
       echo
-      echo "${GREEN}[*] No additional USBs will be created.${NC}"
+      echo -e "${GREEN}[*] No additional USBs will be created.${NC}"
       break
       ;;
     *)
