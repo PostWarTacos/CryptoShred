@@ -97,8 +97,8 @@ finish() {
   END_TS=$(date +"%Y-%m-%d %H:%M:%S %z")
   ELAPSED=$((END_TIME - START_TIME))
   echo
-  echo "[TIME] End: $END_TS"
-  echo "[TIME] Elapsed: $((ELAPSED / 60)) min $((ELAPSED % 60)) sec"
+  echo -e "${GREEN}[TIME] End: $END_TS"
+  echo -e "${GREEN}[TIME] Elapsed: ${YELLOW}$((ELAPSED / 60)) min $((ELAPSED % 60)) sec${NC}"
 }
 trap finish EXIT
 
@@ -626,7 +626,7 @@ USB_END_TIME=$(date +%s)
 USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
 FIRST_USB_ELAPSED=$((USB_END_TIME - START_TIME))
 echo -e "${GREEN}[*] USB ($USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec${NC}"
-echo -e "${GREEN}[*] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). Total elapsed time for first USB: $((FIRST_USB_ELAPSED / 60)) min $((FIRST_USB_ELAPSED % 60)) sec${NC}"
+echo -e "${GREEN}[*] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). ${GREEN}Total elapsed time for first USB: ${YELLOW}$((FIRST_USB_ELAPSED / 60)) min $((FIRST_USB_ELAPSED % 60)) sec${NC}"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # ADDITIONAL USB CREATION LOOP
