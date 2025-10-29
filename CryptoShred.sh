@@ -15,6 +15,13 @@ fi
 
 clear
 
+# Color definitions for installation messages
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 # Ensure TERM is set for proper terminal handling
 export TERM="${TERM:-linux}"
 
@@ -75,7 +82,7 @@ echo
 # BOOT DEVICE DETECTION
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-echo "Identifying boot device..."
+echo "${YELLOW}[*] Identifying boot device...${NC}"
 # Try overlay root, then fallback to live medium, then fallback to first mounted disk
 ROOT_PART=$(findmnt -no SOURCE /)
 if [[ "$ROOT_PART" == "overlay" ]]; then
@@ -110,7 +117,7 @@ AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^
 # echo "DEBUG: AVAILABLE_DISKS='$AVAILABLE_DISKS'"
 if [[ -z "$AVAILABLE_DISKS" ]]; then
   echo
-  echo "ERROR: No available local drives found."
+  echo "${RED}ERROR: No available local drives found.${NC}"
   exit 1
 fi
 
@@ -119,7 +126,7 @@ fi
 while true; do
   # Display drives - USB/live environment friendly
   echo
-  echo "Available local drives:"
+  echo "${YELLOW}Available local drives:${NC}"
   for disk in $AVAILABLE_DISKS; do
       size=$(lsblk -ndo SIZE /dev/$disk)
       model=$(lsblk -ndo MODEL /dev/$disk)
@@ -131,7 +138,7 @@ while true; do
     break
   fi
   echo
-  echo "Device /dev/$DEV is not a valid local disk from the list above. Please try again."
+  echo "${RED}Device /dev/$DEV is not a valid local disk from the list above. Please try again.${NC}"
   prompt_enter "Press Enter to continue..."
   clear
 done
@@ -148,24 +155,24 @@ sudo swapoff -a
 
 echo
 echo "========"
-echo "WARNING: This will irreversibly destroy ALL data on /dev/$DEV!"
+echo "${RED}WARNING: This will irreversibly destroy ALL data on /dev/$DEV!${NC}"
 echo "========"
 echo
 
 # Confirm action
 while true; do
-  CONFIRM=$(prompt_read "Type 'YES' in capital letters to continue: ")
+  CONFIRM=$(prompt_read "${YELLOW}Type 'YES' in capital letters to continue: ${NC}")
   # Check for exact match
   if [[ "$CONFIRM" == "YES" ]]; then
     break
   elif [[ "${CONFIRM,,}" == "y" || "${CONFIRM,,}" == "yes" ]]; then
-    echo "You must type 'YES' in capital letters to confirm."
+    echo "${RED}You must type 'YES' in capital letters to confirm.${NC}"
     prompt_enter "Press Enter to continue..."
     clear
     continue
   else
     echo
-    echo "Aborted."
+    echo "${RED}Aborted.${NC}"
     prompt_enter "Press Enter to continue..."
     clear
     exit 1
@@ -177,7 +184,7 @@ done
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # Ensure the drive is not mounted or in use
-echo "Cleaning up any mounts on /dev/$DEV..."
+echo "${YELLOW}[*] Cleaning up any mounts on /dev/$DEV...${NC}"
 sudo umount /dev/${DEV}? 2>/dev/null || true
 sudo umount -l /dev/$DEV* 2>/dev/null || true
 
@@ -187,11 +194,11 @@ sudo umount -l /dev/$DEV* 2>/dev/null || true
 # Comprehensive device preparation to remove ALL signatures
 # This is critical for avoiding "device already contains signature" errors
 echo
-echo "Preparing device /dev/$DEV for encryption..."
+echo "${YELLOW}[*] Preparing device /dev/$DEV for encryption...${NC}"
 
 # Get device size once and store it
 DEVICE_SIZE=$(sudo blockdev --getsz /dev/$DEV)
-echo "Device size: $DEVICE_SIZE sectors ($(( DEVICE_SIZE * 512 / 1024 / 1024 / 1024 )) GB)"
+echo "${YELLOW}Device size: $DEVICE_SIZE sectors ($(( DEVICE_SIZE * 512 / 1024 / 1024 / 1024 )) GB)${NC}"
 
 # # Check if signatures exist and determine if full cleaning is needed
 # echo "Checking for existing signatures..."
@@ -323,25 +330,25 @@ echo "Device size: $DEVICE_SIZE sectors ($(( DEVICE_SIZE * 512 / 1024 / 1024 / 1
 
 # Check Opal first
 echo
-echo  "Checking for Opal hardware encryption support..."
+echo  "${YELLOW}[*] Checking for Opal hardware encryption support...${NC}"
 # Query sedutil and inspect output for a locked state. Capture output so we can both detect support
 # and look for "Locked = Y". Be tolerant of whitespace/case.
 SEDOUT=$(sedutil-cli --query /dev/$DEV 2>/dev/null || true)
 
 if printf '%s' "$SEDOUT" | grep -qE '^[[:space:]]*Locked[[:space:]]*=[[:space:]]*[Yy]([[:space:]]*,.*)?$'; then
-  echo "Opal-compatible drive detected but device reports 'Locked = Y' (already locked)."
-  echo "No further action required — drive is already sealed."
+  echo "${GREEN}Opal-compatible drive detected but device reports 'Locked = Y' (already locked).${NC}"
+  echo "${GREEN}No further action required — drive is already sealed.${NC}"
   prompt_enter "Press Enter to continue..."
   clear
   exit 0
 elif printf '%s' "$SEDOUT" | grep -q .; then
   # Drive supports Opal, but preference is to use LUKS2 software encryption.
-  echo "Opal-compatible drive detected — preference is software LUKS2, skipping hw-opal enablement."
-  echo "Falling through to LUKS2 software encryption."
+  echo "${YELLOW}Opal-compatible drive detected — preference is software LUKS2, skipping hw-opal enablement.${NC}"
+  echo "${YELLOW}Falling through to LUKS2 software encryption.${NC}"
   echo
   # Do NOT attempt --hw-opal-only here, proceed to LUKS2 section below.
-else 
-  echo "Opal not supported. Falling back to software LUKS2 (AES-XTS)."
+else
+  echo "${YELLOW}Opal not supported. Falling back to software LUKS2 (AES-XTS).${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -353,7 +360,7 @@ fi
   # Create a strong random key and pipe it straight into cryptsetup (no file)
   # Adjust pbkdf/argon2 parameters to taste for speed vs cost.
   echo
-  echo "Creating LUKS2 encryption..."
+  echo "${YELLOW}[*] Creating LUKS2 encryption...${NC}"
   if head -c 64 /dev/urandom | \
     sudo cryptsetup luksFormat /dev/$DEV \
       --type luks2 \
@@ -369,16 +376,16 @@ fi
     # Together these make brute-force attacks much more costly and slow.
 
     echo
-    echo "SUCCESS: Drive /dev/$DEV has been encrypted with a random one-time passphrase."
-    echo "Data is permanently inaccessible."
+    echo "${GREEN}SUCCESS: Drive /dev/$DEV has been encrypted with a random one-time passphrase.${NC}"
+    echo "${GREEN}Data is permanently inaccessible.${NC}"
     echo
     prompt_enter "Press Enter to continue..."
     clear
     exit 0
   else
     echo
-    echo "ERROR: Failed to encrypt /dev/$DEV!"
-    echo "This could be due to:"
+    echo "${RED}ERROR: Failed to encrypt /dev/$DEV!${NC}"
+    echo "${RED}This could be due to:${NC}"
     echo "  - Hardware I/O errors (drive may be failing)"
     echo "  - Drive is in use or mounted"
     echo "  - Insufficient permissions"

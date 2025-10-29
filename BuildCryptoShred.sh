@@ -12,6 +12,13 @@
 set -euo pipefail
 clear
 
+# Color definitions for installation messages
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # SHELL AND ENVIRONMENT DETECTION
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -176,7 +183,7 @@ echo "The resulting ISO will be written directly to the specified USB device."
 echo "Make sure to change the USB device and script are in place before proceeding."
 echo "WARNING: This will ERASE ALL DATA on the specified USB device."
 echo
-echo "IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in."
+echo -e "${RED}IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in.${NC}"
 echo
 echo "==========================================================================================================================="
 echo
@@ -204,10 +211,10 @@ while true; do
 # List local drives (excluding loop, CD-ROM, and removable devices)
   echo
   echo "Select the target USB device to write the ISO to."
-  echo "Make sure to choose the correct device as all data on it will be erased!"
+  echo -e "${RED}Make sure to choose the correct device as all data on it will be erased!${NC}"
   echo
-  echo "Available local drives:"
-  lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
+  echo -e "${YELLOW}Available local drives:${NC}"
+  lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi "$BOOTDEV"
   echo
   # Prompt for device to write ISO to
   read -p "Enter the device to write ISO to (e.g., sdb, nvme0n1): " USBDEV
@@ -216,7 +223,7 @@ while true; do
     # Prevent wiping the boot device
     if [[ "$USBDEV" == "$BOOTDEV" ]]; then
       echo
-      echo "ERROR: /dev/$USBDEV appears to be the boot device. Please choose another device."
+      echo -e "${RED}ERROR: /dev/$USBDEV appears to be the boot device. Please choose another device.${NC}"
       read -p "Press Enter to continue..."
       clear
       continue
@@ -224,7 +231,7 @@ while true; do
     break
   fi
   echo
-  echo "Device /dev/$USBDEV is not a valid local disk from the list above. Please try again."
+  echo -e "${RED}Device /dev/$USBDEV is not a valid local disk from the list above. Please try again.${NC}"
   read -p "Press Enter to continue..."
   clear
 done
@@ -234,7 +241,7 @@ done
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Cleaning old build dirs..."
+echo -e "${YELLOW}[*] Cleaning old build dirs...${NC}"
 if [ -d "$WORKDIR" ]; then
   rm -rf "$WORKDIR"
 fi
@@ -286,24 +293,24 @@ fi
 LOCAL_CRYPTOSHRED="$SCRIPT_DIR/CryptoShred.sh"
 
 echo
-echo "[*] Using local CryptoShred.sh from directory..."
+echo -e "${YELLOW}[*] Using local CryptoShred.sh from: ${LOCAL_CRYPTOSHRED} (script dir: ${SCRIPT_DIR})${NC}"
 echo "[DEBUG] Script directory: $SCRIPT_DIR"
 echo "[DEBUG] Looking for CryptoShred.sh at: $LOCAL_CRYPTOSHRED"
 
 # Check if local file exists
 if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
-  echo "[!] Error: Local CryptoShred.sh not found at $LOCAL_CRYPTOSHRED"
-  echo "[!] Please ensure CryptoShred.sh is in the same directory as BuildCryptoShred.sh"
+  echo -e "${RED}[!] Error: Local CryptoShred.sh not found at $LOCAL_CRYPTOSHRED${NC}"
+  echo -e "${RED}[!] Please ensure CryptoShred.sh is in the same directory as BuildCryptoShred.sh${NC}"
   echo "[DEBUG] Current working directory: $(pwd)"
   echo "[DEBUG] \$0 = $0"
   echo "[DEBUG] BASH_SOURCE[0] = ${BASH_SOURCE[0]:-unset}"
   echo "[DEBUG] Process cmdline: $(cat /proc/$$/cmdline 2>/dev/null | tr '\0' ' ')"
   echo "[DEBUG] Files in script directory:"
-  ls -la "$SCRIPT_DIR/" 2>/dev/null || echo "Cannot list script directory"
+  ls -la "$SCRIPT_DIR/" 2>/dev/null || echo -e "${RED}Cannot list script directory: $SCRIPT_DIR${NC}"
   exit 1
 fi
 
-echo "[+] Found local CryptoShred.sh"
+echo -e "${GREEN}[+] Found local CryptoShred.sh at: ${LOCAL_CRYPTOSHRED}${NC}"
 mkdir -p "$(dirname "$CRYPTOSHRED_SCRIPT")"
 cp "$LOCAL_CRYPTOSHRED" "$CRYPTOSHRED_SCRIPT"
 
@@ -312,42 +319,43 @@ cp "$LOCAL_CRYPTOSHRED" "$CRYPTOSHRED_SCRIPT"
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Fetching latest Debian ISO link..."
+echo -e "${YELLOW}[*] Fetching latest Debian ISO link...${NC}"
 ISO_URL=$(curl -s "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | 
   grep -oP 'href="debian-live-[0-9.]+-amd64-standard\.iso"' | head -n1 | cut -d'"' -f2)
 
 # Check if ISO_URL was found
 if [ -z "$ISO_URL" ]; then
-  echo "[!] Error: Could not find Debian ISO URL. Check internet connection or Debian mirrors."
+  echo -e "${RED}[!] Error: Could not find Debian ISO URL. Check internet connection or Debian mirrors.${NC}"
   echo "[DEBUG] Trying to list available ISOs..."
   curl -s "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | grep -o 'debian-live-[^"]*\.iso' | head -5
   exit 1
 fi
 
-echo "[*] Found ISO: $ISO_URL"
-echo "[*] Downloading $ISO_URL..."
-echo "[*] This may take several minutes depending on your connection..."
+echo -e "${YELLOW}[*] Found ISO: $ISO_URL${NC}"
+echo -e "${YELLOW}[*] Downloading $ISO_URL...${NC}"
+echo -e "${YELLOW}[*] This may take several minutes depending on your connection...${NC}"
 
 # Use wget with better progress display and error handling
 if ! wget --progress=bar:force "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/$ISO_URL" -O debian.iso; then
-  echo "[!] Error: Failed to download Debian ISO"
-  echo "[!] Please check your internet connection and try again"
+  echo -e "${RED}[!] Error: Failed to download Debian ISO${NC}"
+  echo -e "${RED}[!] Please check your internet connection and try again${NC}"
   exit 1
 fi
 
-echo "[+] ISO download completed successfully"
+echo -e "${GREEN}[+] ISO download completed successfully${NC}"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # ISO EXTRACTION AND MODIFICATION
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Extracting ISO..."
+echo
+echo -e "${YELLOW}[*] Extracting ISO...${NC}"
 7z x debian.iso -oiso >/dev/null
 
 # Extract squashfs
 echo
-echo "[*] Extracting squashfs..."
+echo -e "${YELLOW}[*] Extracting squashfs...${NC}"
 unsquashfs iso/live/filesystem.squashfs
 mv squashfs-root/* edit
 rm -rf squashfs-root
@@ -356,10 +364,10 @@ rm -rf squashfs-root
 # CRYPTOSHRED INTEGRATION
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-echo "[*] Copying CryptoShred.sh to usr/bin..."
+echo -e "${YELLOW}[*] Copying CryptoShred.sh to usr/bin...${NC}"
 if [ ! -f "$CRYPTOSHRED_SCRIPT" ]; then
   echo
-  echo "[!] $CRYPTOSHRED_SCRIPT not found. Aborting."
+  echo -e "${RED}[!] $CRYPTOSHRED_SCRIPT not found. Aborting.${NC}"
   exit 1
 fi
 mkdir -p edit/usr/bin
@@ -371,7 +379,7 @@ chmod 755 "edit/usr/bin/CryptoShred.sh"
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Creating CryptoShred service..."
+echo -e "${YELLOW}[*] Creating CryptoShred service...${NC}"
 cat > edit/etc/systemd/system/cryptoshred.service <<'EOF'
 [Unit]
 Description=CryptoShred autorun (first-boot)
@@ -408,7 +416,7 @@ cd "$WORKDIR"
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Mounting for chroot..."
+echo -e "${YELLOW}[*] Mounting for chroot...${NC}"
 mount --bind /dev edit/dev
 mount --bind /run edit/run
 mount -t proc /proc edit/proc
@@ -418,7 +426,8 @@ mount -t devpts /dev/pts edit/dev/pts
 
 # Setup networking for chroot
 echo
-echo "[*] Setting up networking for chroot..."
+echo
+echo -e "${YELLOW}[*] Setting up networking for chroot...${NC}"
 cp /etc/resolv.conf edit/etc/resolv.conf
 cat > edit/etc/apt/sources.list <<'EOF'
 deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
@@ -429,7 +438,8 @@ EOF
 
 # === Chroot and install cryptsetup ===
 echo
-echo "[*] Chrooting and installing cryptsetup..."
+echo
+echo -e "${YELLOW}[*] Chrooting and installing cryptsetup...${NC}"
 cat <<'CHROOT' | chroot edit /bin/bash
 set -e
 export DEBIAN_FRONTEND=noninteractive
@@ -499,7 +509,7 @@ CHROOT
 
 # Cleanup mounts
 echo
-echo "[*] Cleaning up mounts..."
+echo -e "${YELLOW}[*] Cleaning up mounts...${NC}"
 umount -lf edit/dev/pts || true
 umount -lf edit/dev || true
 umount -lf edit/run || true
@@ -512,12 +522,12 @@ umount -lf edit/tmp || true
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Modifying GRUB config..."
+echo -e "${YELLOW}[*] Modifying GRUB config...${NC}"
 GRUB_CFG="iso/boot/grub/grub.cfg"
 if [ -f "$GRUB_CFG" ]; then
   sed -i '1i set default=0\nset timeout=0' "$GRUB_CFG"
 else
-  echo "[!] GRUB config not found at $GRUB_CFG"
+  echo -e "${RED}[!] GRUB config not found at $GRUB_CFG${NC}"
   read -p "Press Enter to continue..."
   exit 1
 fi
@@ -527,14 +537,14 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Rebuilding squashfs..."
+echo -e "${YELLOW}[*] Rebuilding squashfs...${NC}"
 mksquashfs edit iso/live/filesystem.squashfs -noappend -e boot
 
 # Verify the cryptoshred service and its enablement symlink exist in the edit tree
 if [ ! -f "edit/etc/systemd/system/cryptoshred.service" ] || [ ! -L "edit/etc/systemd/system/sysinit.target.wants/cryptoshred.service" ]; then
   echo
-  echo "[ERROR] cryptoshred.service or its enablement symlink is missing from the edit tree after squashfs rebuild."
-  echo "[ERROR] Please check edit/etc/systemd/system and edit/etc/systemd/system/sysinit.target.wants"
+  echo -e "${RED}[ERROR] cryptoshred.service or its enablement symlink is missing from the edit tree after squashfs rebuild.${NC}"
+  echo -e "${RED}[ERROR] Please check edit/etc/systemd/system and edit/etc/systemd/system/sysinit.target.wants${NC}"
   exit 1
 fi
 
@@ -543,7 +553,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Building ISO..."
+echo -e "${YELLOW}[*] Building ISO...${NC}"
 # Locate isohdpfx.bin used by isohybrid. Different distros/packages install it in
 # different locations. Try a set of common candidates and only pass the option
 # to xorriso if we find it on the host filesystem.
@@ -558,19 +568,19 @@ ISOHYBRID_MBR_OPT=""
 for cand in "${ISOHYBRID_CANDIDATES[@]}"; do
   if [ -f "$cand" ]; then
     ISOHYBRID_MBR_OPT=( -isohybrid-mbr "$cand" )
-    echo "[INFO] Using isohybrid MBR from: $cand"
+    echo -e "${YELLOW}[INFO] Using isohybrid MBR from: $cand${NC}"
     break
   fi
 done
 if [ -z "${ISOHYBRID_MBR_OPT[*]:-}" ]; then
-  echo "[WARN] isohdpfx.bin not found in known locations; proceeding without -isohybrid-mbr."
-  echo "[WARN] This may affect BIOS bootability on some systems."
+  echo -e "${RED}[WARN] isohdpfx.bin not found in known locations; proceeding without -isohybrid-mbr.${NC}"
+  echo -e "${RED}[WARN] This may affect BIOS bootability on some systems.${NC}"
 fi
 
 # Build the ISO. Use the computed ISOHYBRID_MBR_OPT (may be empty).
 ISO_ROOT="$WORKDIR/iso"
 if [ ! -d "$ISO_ROOT" ]; then
-  echo "[ERROR] ISO root directory not found at $ISO_ROOT"
+  echo -e "${RED}[ERROR] ISO root directory not found at $ISO_ROOT${NC}"
   exit 1
 fi
 
@@ -587,7 +597,7 @@ EFI_OPT=()
 if [ -f "$ISO_ROOT/boot/grub/efi.img" ]; then
   EFI_OPT=( -eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot -isohybrid-gpt-basdat )
 else
-  echo "[WARN] EFI image boot/grub/efi.img not found in $ISO_ROOT; skipping EFI options."
+  echo -e "${RED}[WARN] EFI image boot/grub/efi.img not found in $ISO_ROOT; skipping EFI options.${NC}"
 fi
 
 # Build argument array safely and run xorriso
@@ -599,7 +609,7 @@ XORRISO_ARGS+=( "${ISOLINUX_OPTIONS[@]}" )
 XORRISO_ARGS+=( "${EFI_OPT[@]}" )
 XORRISO_ARGS+=( "$ISO_ROOT" )
 
-echo "[INFO] Running: xorriso ${XORRISO_ARGS[*]}"
+echo -e "${YELLOW}[INFO] Running: xorriso ${XORRISO_ARGS[*]}${NC}"
 xorriso "${XORRISO_ARGS[@]}"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -607,16 +617,16 @@ xorriso "${XORRISO_ARGS[@]}"
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Writing ISO to USB ($USBDEV)..."
-echo "[*] This may take several minutes depending on USB speed..."
+echo -e "${YELLOW}[*] Writing ISO to USB ($USBDEV)...${NC}"
+echo -e "${YELLOW}[*] This may take several minutes depending on USB speed...${NC}"
 USB_START_TIME=$(date +%s)
 dd if="$OUTISO" of="/dev/$USBDEV" bs=4M status=progress oflag=direct conv=fsync
 sync
 USB_END_TIME=$(date +%s)
 USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
 FIRST_USB_ELAPSED=$((USB_END_TIME - START_TIME))
-echo "[*] USB ($USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
-echo "[*] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). Total elapsed time for first USB: $((FIRST_USB_ELAPSED / 60)) min $((FIRST_USB_ELAPSED % 60)) sec"
+echo -e "${GREEN}[*] USB ($USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec${NC}"
+echo -e "${GREEN}[*] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). Total elapsed time for first USB: $((FIRST_USB_ELAPSED / 60)) min $((FIRST_USB_ELAPSED % 60)) sec${NC}"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # ADDITIONAL USB CREATION LOOP
@@ -624,17 +634,18 @@ echo "[*] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H
 
 while true; do
   echo
-  read -p "Create another USB? (y/n): " CREATE_ANOTHER
+  printf "%b" "${YELLOW}Create another USB? (y/n): ${NC}"
+  read -r CREATE_ANOTHER
   
   case "$CREATE_ANOTHER" in
     [Yy]|[Yy][Ee][Ss])
       # Select new USB device
       while true; do
         echo
-        echo "Select another USB device to write the same ISO to."
-        echo "Make sure to choose the correct device as all data on it will be erased!"
+        echo "Select another USB device to write the same ISO to.${NC}"
+        echo -e "${RED}Make sure to choose the correct device as all data on it will be erased!${NC}"
         echo
-        echo "Available local drives:"
+        echo "${YELLOW}Available local drives:${NC}"
         lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
         echo
         
@@ -645,21 +656,21 @@ while true; do
           # Prevent wiping the boot device
           if [[ "$NEW_USBDEV" == "$BOOTDEV" ]]; then
             echo
-            echo "ERROR: /dev/$NEW_USBDEV appears to be the boot device. Please choose another device."
+            echo "${RED}ERROR: /dev/$NEW_USBDEV appears to be the boot device. Please choose another device.${NC}"
             read -p "Press Enter to continue..."
             continue
           fi
           break
         fi
         echo
-        echo "Device /dev/$NEW_USBDEV is not a valid local disk from the list above. Please try again."
+        echo "${RED}Device /dev/$NEW_USBDEV is not a valid local disk from the list above. Please try again.${NC}"
         read -p "Press Enter to continue..."
       done
       
       # Write ISO to new USB device
       echo
-      echo "[*] Writing ISO to USB ($NEW_USBDEV)..."
-      echo "[*] This may take several minutes depending on USB speed..."
+      echo -e "${YELLOW}[*] Writing ISO to USB ($NEW_USBDEV)...${NC}"
+      echo -e "${YELLOW}[*] This may take several minutes depending on USB speed...${NC}"
       USB_START_TIME=$(date +%s)
       dd if="$OUTISO" of="/dev/$NEW_USBDEV" bs=4M status=progress oflag=direct conv=fsync
       sync
@@ -667,13 +678,13 @@ while true; do
       USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
       THIS_USB_ELAPSED=$((USB_END_TIME - START_TIME))
       echo
-      echo "[*] USB ($NEW_USBDEV) flashing completed successfully!"
-      echo "[*] USB ($NEW_USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec"
-      echo "[*] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). Total elapsed time for THIS USB: $((THIS_USB_ELAPSED / 60)) min $((THIS_USB_ELAPSED % 60)) sec"
+      echo -e "${GREEN}[*] USB ($NEW_USBDEV) flashing completed successfully!${NC}"
+      echo -e "${GREEN}[*] USB ($NEW_USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec${NC}"
+      echo -e "${GREEN}[*] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). ${GREEN}Total elapsed time for THIS USB: ${YELLOW}$((THIS_USB_ELAPSED / 60)) min $((THIS_USB_ELAPSED % 60)) sec${NC}"
       ;;
     [Nn]|[Nn][Oo])
       echo
-      echo "[*] No additional USBs will be created."
+      echo "${GREEN}[*] No additional USBs will be created.${NC}"
       break
       ;;
     *)
