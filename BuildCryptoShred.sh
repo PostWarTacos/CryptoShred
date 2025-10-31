@@ -304,11 +304,11 @@ trap finish EXIT
 
 # === Verify required tools are installed on local host ===
 echo
-echo "${YELLOW}[*] Checking for required tools...${NC}"
+echo -e "${YELLOW}[*] Checking for required tools...${NC}"
 for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo
-    echo "${RED}[!] $cmd is not installed. Attempting to install...${NC}"
+    echo -e "${RED}[!] $cmd is not installed. Attempting to install...${NC}"
     apt-get update
     if [ "$cmd" = "7z" ]; then
       apt-get install -y p7zip-full
@@ -319,7 +319,7 @@ for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
     fi
     if ! command -v "$cmd" >/dev/null 2>&1; then
       echo
-      echo "${RED}[!] Failed to install $cmd. Please install it manually.${NC}"
+      echo -e "${RED}[!] Failed to install $cmd. Please install it manually.${NC}"
       read -p "Press Enter to continue..."
       exit 1
     fi
@@ -486,7 +486,7 @@ if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR" ]; then
     # Ultimate fallback if SUDO_USER is not set
     SCRIPT_DIR="/home/$(logname 2>/dev/null || echo "user")/Documents/CryptoShred"
   fi
-  echo "${RED}[!] Using fallback script directory: $SCRIPT_DIR${NC}"
+  echo -e "${RED}[!] Using fallback script directory: $SCRIPT_DIR${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
