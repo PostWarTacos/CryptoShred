@@ -65,12 +65,6 @@ download_and_validate() {
     local_blob=$(git hash-object "$target_file" 2>/dev/null || true)
   fi
   
-  # Debug output - can be removed later
-  echo -e "${YELLOW}[DEBUG] Remote SHA: '${remote_sha}' (length: ${#remote_sha})${NC}"
-  echo -e "${YELLOW}[DEBUG] Local blob: '${local_blob}' (length: ${#local_blob})${NC}"
-  echo -e "${YELLOW}[DEBUG] File exists: $([ -f "$target_file" ] && echo "YES" || echo "NO")${NC}"
-  echo -e "${YELLOW}[DEBUG] Git available: $(command -v git >/dev/null 2>&1 && echo "YES" || echo "NO")${NC}"
-  
   # Check if up to date
   if [ -n "$remote_sha" ] && [ -n "$local_blob" ] && [ "$remote_sha" = "$local_blob" ]; then
     echo -e "${GREEN}[+] Local $script_name is up to date (git blob sha match).${NC}"
