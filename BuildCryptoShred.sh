@@ -453,6 +453,11 @@ fi
 chmod 700 "$WORKDIR"
 cd "$WORKDIR"
 
+# Remote info for the CryptoShred script
+CRYPTOSHRED_REMOTE_PATH="CryptoShred.sh"
+CRYPTOSHRED_API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${CRYPTOSHRED_REMOTE_PATH}?ref=${REF}"
+CRYPTOSHRED_RAW_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${REF}/${CRYPTOSHRED_REMOTE_PATH}"
+
 echo
 # Use the download and validate function for CryptoShred.sh (workspace mode)
 if ! download_and_validate "$CRYPTOSHRED_API_URL" "$CRYPTOSHRED_RAW_URL" "$LOCAL_CRYPTOSHRED" "true"; then
@@ -509,11 +514,6 @@ fi
 
 # Ensure LOCAL_CRYPTOSHRED points to the intended local path
 LOCAL_CRYPTOSHRED="${LOCAL_CRYPTOSHRED:-$CRYPTOSHRED_SCRIPT}"
-
-# Remote info for the CryptoShred script
-CRYPTOSHRED_REMOTE_PATH="CryptoShred.sh"
-CRYPTOSHRED_API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${CRYPTOSHRED_REMOTE_PATH}?ref=${REF}"
-CRYPTOSHRED_RAW_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${REF}/${CRYPTOSHRED_REMOTE_PATH}"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # DEBIAN ISO DOWNLOAD
