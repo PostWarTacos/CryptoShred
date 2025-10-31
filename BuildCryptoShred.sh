@@ -441,11 +441,28 @@ done
 
 echo
 echo -e "${YELLOW}[*] Cleaning old build dirs...${NC}"
+
+# Preserve existing CryptoShred.sh if it exists (for validation)
+TEMP_CRYPTOSHRED=""
+if [ -d "$WORKDIR" ] && [ -f "$WORKDIR/CryptoShred.sh" ]; then
+  TEMP_CRYPTOSHRED=$(mktemp)
+  cp "$WORKDIR/CryptoShred.sh" "$TEMP_CRYPTOSHRED"
+  echo -e "${YELLOW}[*] Preserving existing CryptoShred.sh for validation...${NC}"
+fi
+
 if [ -d "$WORKDIR" ]; then
   rm -rf "$WORKDIR"
 fi
 mkdir -p "$WORKDIR/edit"
 mkdir -p "$WORKDIR/iso"
+
+# Restore preserved CryptoShred.sh if we had one
+if [ -n "$TEMP_CRYPTOSHRED" ] && [ -f "$TEMP_CRYPTOSHRED" ]; then
+  cp "$TEMP_CRYPTOSHRED" "$WORKDIR/CryptoShred.sh"
+  rm -f "$TEMP_CRYPTOSHRED"
+  echo -e "${YELLOW}[*] Restored CryptoShred.sh for validation...${NC}"
+fi
+
 # Only attempt to chown if SUDO_USER is set and maps to a valid user
 if [ -n "${SUDO_USER:-}" ] && getent passwd "$SUDO_USER" >/dev/null 2>&1; then
   chown "$SUDO_USER":"$SUDO_USER" "$WORKDIR"
