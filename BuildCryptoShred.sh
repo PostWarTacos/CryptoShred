@@ -70,8 +70,8 @@ download_and_validate() {
     echo -e "${GREEN}[+] Local $script_name is up to date (git blob sha match).${NC}"
     return 0
   fi
-  
-  echo -e "${YELLOW}[*] Remote $script_name differs or verification unavailable; downloading for validation...${NC}"
+
+  echo -e "${YELLOW}[*] Remote $script_name differs or verification unavailable; downloading now...${NC}"
   local tmp_file="$(mktemp)" || { echo -e "${RED}[!] Failed to create temp file.${NC}"; return 1; }
   
   # Download file
