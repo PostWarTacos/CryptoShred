@@ -30,6 +30,167 @@ get_remote_blob_sha() {
     | sed -n 's/.*"sha": *"\([^"]*\)".*/\1/p' || true
 }
 
+# Safe file installation function
+# Usage: safe_install_file "source_file" "target_file" ["permissions"]
+safe_install_file() {
+  local source="$1"
+  local target="$2"
+  local perms="${3:-0755}"
+  
+  mkdir -p "$(dirname "$target")" || { echo -e "${RED}[!] Failed to create directory for $target.${NC}"; return 1; }
+  cp -- "$source" "$target" || { echo -e "${RED}[!] Copy failed to $target.${NC}"; return 1; }
+  chmod "$perms" "$target" || true
+  sync "$target" || true
+  return 0
+}
+
+# Download and validate function with Git blob SHA verification
+# Usage: download_and_validate "api_url" "raw_url" "target_file" "workspace_mode" ["exit_on_update"]
+# workspace_mode: "true" for workspace-only install, "false" for host system install
+# exit_on_update: "true" to exit script after successful update (for self-update)
+download_and_validate() {
+  local api_url="$1"
+  local raw_url="$2" 
+  local target_file="$3"
+  local workspace_mode="${4:-false}"
+  local exit_on_update="${5:-false}"
+  local script_name="$(basename "$target_file")"
+  
+  echo -e "${YELLOW}[*] Checking remote $script_name for updates...${NC}"
+  
+  # Get remote and local blob SHAs
+  local remote_sha="$(get_remote_blob_sha "$api_url")"
+  local local_blob=""
+  if command -v git >/dev/null 2>&1 && [ -f "$target_file" ]; then
+    local_blob=$(git hash-object "$target_file" 2>/dev/null || true)
+  fi
+  
+  # Check if up to date
+  if [ -n "$remote_sha" ] && [ -n "$local_blob" ] && [ "$remote_sha" = "$local_blob" ]; then
+    echo -e "${GREEN}[+] Local $script_name is up to date (git blob sha match).${NC}"
+    return 0
+  fi
+  
+  echo -e "${YELLOW}[*] Remote $script_name differs or verification unavailable; downloading for validation...${NC}"
+  local tmp_file="$(mktemp)" || { echo -e "${RED}[!] Failed to create temp file.${NC}"; return 1; }
+  
+  # Download file
+  if ! curl "${CURL_OPTS[@]}" -o "$tmp_file" "$raw_url"; then
+    echo -e "${RED}[!] Failed to download $script_name from $raw_url.${NC}"
+    rm -f "$tmp_file"
+    return 1
+  fi
+  
+  # Basic sanity check for shell scripts
+  if [[ "$script_name" == *.sh ]] && ! sed -n '1p' "$tmp_file" | grep -qE '^#!.*/bin/(ba)?sh'; then
+    echo -e "${RED}[!] Downloaded $script_name missing valid shebang. Rejecting.${NC}"
+    rm -f "$tmp_file"
+    return 1
+  fi
+  
+  # Git blob SHA verification (preferred)
+  if [ -n "$remote_sha" ] && command -v git >/dev/null 2>&1; then
+    local dl_blob="$(git hash-object "$tmp_file" 2>/dev/null || true)"
+    if [ -n "$dl_blob" ] && [ "$dl_blob" = "$remote_sha" ]; then
+      echo -e "${GREEN}[+] Download validated against GitHub API blob SHA.${NC}"
+      
+      # Install based on mode
+      if [ "$workspace_mode" = "true" ]; then
+        # Workspace-only installation
+        if safe_install_file "$tmp_file" "$target_file" "0755"; then
+          echo -e "${GREEN}[+] $script_name downloaded to $target_file (will be embedded into ISO).${NC}"
+          rm -f "$tmp_file"
+          return 0
+        else
+          rm -f "$tmp_file"
+          return 1
+        fi
+      else
+        # Host system installation with permission preservation
+        local orig_perms=$(stat -c %a "$target_file" 2>/dev/null || echo 0755)
+        chmod +x "$tmp_file" || true
+        if command -v install >/dev/null 2>&1; then
+          install -m "$orig_perms" "$tmp_file" "$target_file" || {
+            echo -e "${RED}[!] Install failed. Exiting.${NC}"
+            rm -f "$tmp_file"
+            return 1
+          }
+        else
+          if ! safe_install_file "$tmp_file" "$target_file" "$orig_perms"; then
+            rm -f "$tmp_file"
+            return 1
+          fi
+        fi
+        sync "$target_file" || true
+        echo -e "${GREEN}[+] Script updated from GitHub (verified). Please re-run $script_name.${NC}"
+        rm -f "$tmp_file"
+        
+        # Exit if this is a self-update
+        if [ "$exit_on_update" = "true" ]; then
+          exit 0
+        fi
+        return 0
+      fi
+    else
+      echo -e "${RED}[!] Download blob SHA mismatch (expected ${remote_sha:-<none>}). Rejecting.${NC}"
+      echo "    Downloaded: ${dl_blob:-<missing>}"
+      rm -f "$tmp_file"
+    fi
+  fi
+  
+  # Fallback: SHA256 verification
+  echo -e "${YELLOW}[*] Falling back to SHA256 verification...${NC}"
+  local remote_hash=$(sha256sum "$tmp_file" | cut -d' ' -f1)
+  local local_hash=$([ -f "$target_file" ] && sha256sum "$target_file" | cut -d' ' -f1 || echo "")
+  
+  if [ -z "$remote_hash" ]; then
+    echo -e "${RED}[!] Could not compute remote sha256. Rejecting download.${NC}"
+    rm -f "$tmp_file"
+    return 1
+  elif [ -z "$local_hash" ] || [ "$local_hash" != "$remote_hash" ]; then
+    if [ "$workspace_mode" = "true" ]; then
+      echo -e "${YELLOW}[*] sha256 differs or local missing; downloading $script_name for workspace...${NC}"
+      if safe_install_file "$tmp_file" "$target_file" "0755"; then
+        echo -e "${GREEN}[+] $script_name downloaded to $target_file (will be embedded into ISO).${NC}"
+        rm -f "$tmp_file"
+        return 0
+      else
+        rm -f "$tmp_file"
+        return 1
+      fi
+    else
+      echo -e "${YELLOW}[*] sha256 differs or local missing; updating $script_name...${NC}"
+      local orig_perms=$(stat -c %a "$target_file" 2>/dev/null || echo 0755)
+      chmod +x "$tmp_file" || true
+      if command -v install >/dev/null 2>&1; then
+        install -m "$orig_perms" "$tmp_file" "$target_file" || {
+          echo -e "${RED}[!] Install failed.${NC}"
+          rm -f "$tmp_file"
+          return 1
+        }
+      else
+        if ! safe_install_file "$tmp_file" "$target_file" "$orig_perms"; then
+          rm -f "$tmp_file"
+          return 1
+        fi
+      fi
+      sync "$target_file" || true
+      echo -e "${GREEN}[+] $script_name updated.${NC}"
+      rm -f "$tmp_file"
+      
+      # Exit if this is a self-update
+      if [ "$exit_on_update" = "true" ]; then
+        exit 0
+      fi
+      return 0
+    fi
+  else
+    echo -e "${GREEN}[+] Downloaded $script_name matches local sha256; no update needed.${NC}"
+    rm -f "$tmp_file"
+    return 0
+  fi
+}
+
 # Resolve the path to this script (attempt a few strategies)
 resolve_self_path() {
   local path
@@ -194,117 +355,16 @@ if [ -z "$SCRIPT_PATH" ] || [ ! -f "$SCRIPT_PATH" ]; then
   SCRIPT_PATH="$0"
 fi
 
-# Compute local hashes
-LOCAL_BLOB_SHA=""
-if command -v git >/dev/null 2>&1 && [ -f "$SCRIPT_PATH" ]; then
-  LOCAL_BLOB_SHA=$(git hash-object "$SCRIPT_PATH" 2>/dev/null || true)
-fi
-LOCAL_SHA256=$([ -f "$SCRIPT_PATH" ] && sha256sum "$SCRIPT_PATH" | cut -d' ' -f1 || echo "")
-
 echo
 echo -e "${YELLOW}[*] Checking for BuildCryptoShred.sh updates using GitHub API blob SHA...${NC}"
 
-# Fetch remote blob SHA from GitHub API
-REMOTE_SHA="$(get_remote_blob_sha "$API_URL")"
-
-# If we have a git blob SHA locally and remotely, compare directly
-if [ -n "$LOCAL_BLOB_SHA" ] && [ -n "$REMOTE_SHA" ]; then
-  if [ "$LOCAL_BLOB_SHA" = "$REMOTE_SHA" ]; then
-    echo -e "${GREEN}[+] BuildCryptoShred.sh is up to date (git blob sha match: ${LOCAL_BLOB_SHA:0:16}...)${NC}"
-  else
-    echo
-    echo -e "${RED}[!] Local script blob SHA differs from GitHub API blob SHA.${NC}"
-    echo "    Local blob SHA:  ${LOCAL_BLOB_SHA}"
-    echo "    Remote blob SHA: ${REMOTE_SHA}"
-    echo "    Downloading and verifying remote script..."
-
-    TMP_REMOTE="$(mktemp)" || { echo -e "${RED}[!] Failed to create temp file.${NC}"; exit 1; }
-    if ! curl "${CURL_OPTS[@]}" -o "$TMP_REMOTE" "$RAW_URL"; then
-      echo -e "${RED}[!] Failed to download remote script from $RAW_URL. Aborting update.${NC}"
-      rm -f "$TMP_REMOTE"
-    else
-      # Compute blob SHA of downloaded file and verify matches API
-      DOWNLOADED_BLOB_SHA=$(git hash-object "$TMP_REMOTE" 2>/dev/null || true)
-      if [ -n "$DOWNLOADED_BLOB_SHA" ] && [ "$DOWNLOADED_BLOB_SHA" = "$REMOTE_SHA" ]; then
-        echo -e "${GREEN}[+] Download verified against GitHub API blob SHA.${NC}"
-        # Replace current script atomically, preserving original permissions
-        ORIG_PERMS=$(stat -c %a "$SCRIPT_PATH" 2>/dev/null || echo 0755)
-        chmod +x "$TMP_REMOTE" || true
-        if command -v install >/dev/null 2>&1; then
-          install -m "$ORIG_PERMS" "$TMP_REMOTE" "$SCRIPT_PATH" || {
-            echo -e "${RED}[!] Install failed. Exiting.${NC}"
-            rm -f "$TMP_REMOTE"
-            exit 1
-          }
-        else
-          mkdir -p "$(dirname "$SCRIPT_PATH")"
-          cp -- "$TMP_REMOTE" "$SCRIPT_PATH" || {
-            echo -e "${RED}[!] Copy failed. Exiting.${NC}"
-            rm -f "$TMP_REMOTE"
-            exit 1
-          }
-          chmod "$ORIG_PERMS" "$SCRIPT_PATH" || true
-        fi
-        sync "$SCRIPT_PATH" || true
-        echo
-        echo -e "${GREEN}[+] Script updated from GitHub (verified). Please re-run BuildCryptoShred.sh.${NC}"
-        rm -f "$TMP_REMOTE"
-        exit 0
-      else
-        echo -e "${RED}[!] Downloaded file failed verification (blob sha mismatch). Not updating.${NC}"
-        echo "    Downloaded blob SHA: ${DOWNLOADED_BLOB_SHA:-<missing>}"
-        echo "    Expected remote API blob SHA: ${REMOTE_SHA:-<missing>}"
-        rm -f "$TMP_REMOTE"
-      fi
-    fi
-  fi
-
-# If we couldn't compute local blob SHA or couldn't fetch REMOTE_SHA, fall back to sha256-based check
+# Use the download and validate function for self-update
+if download_and_validate "$API_URL" "$RAW_URL" "$SCRIPT_PATH" "false" "true"; then
+  # If function returns 0 but file was updated, it will have already exited
+  # If we get here, either file is up to date or there was an error that we can continue from
+  echo -e "${GREEN}[+] BuildCryptoShred.sh check completed.${NC}"
 else
-  echo -e "${YELLOW}[*] Falling back to sha256-based check (git blob sha unavailable or API failed).${NC}"
-  TMP_REMOTE="$(mktemp)" || { echo -e "${RED}[!] Failed to create temp file.${NC}"; exit 1; }
-  if curl "${CURL_OPTS[@]}" -o "$TMP_REMOTE" "$RAW_URL"; then
-    REMOTE_HASH=$(sha256sum "$TMP_REMOTE" | cut -d' ' -f1)
-    LOCAL_HASH=$([ -f "$SCRIPT_PATH" ] && sha256sum "$SCRIPT_PATH" | cut -d' ' -f1 || echo "")
-    if [ -z "$REMOTE_HASH" ]; then
-      echo -e "${RED}[!] Could not compute remote sha256. Skipping update.${NC}"
-      rm -f "$TMP_REMOTE"
-    elif [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
-      echo
-      echo -e "${RED}[!] Local script sha256 differs from remote version.${NC}"
-      echo "    Local:  ${LOCAL_HASH:-<missing>}"
-      echo "    Remote: ${REMOTE_HASH:-<unknown>}"
-      echo "    Updating local script with the latest version..."
-      ORIG_PERMS=$(stat -c %a "$SCRIPT_PATH" 2>/dev/null || echo 0755)
-      chmod +x "$TMP_REMOTE" || true
-      if command -v install >/dev/null 2>&1; then
-        install -m "$ORIG_PERMS" "$TMP_REMOTE" "$SCRIPT_PATH" || {
-          echo -e "${RED}[!] Install failed. Exiting script.${NC}"
-          rm -f "$TMP_REMOTE"
-          exit 1
-        }
-      else
-        mkdir -p "$(dirname "$SCRIPT_PATH")"
-        cp -- "$TMP_REMOTE" "$SCRIPT_PATH" || {
-          echo -e "${RED}[!] Copy failed. Exiting script.${NC}"
-          rm -f "$TMP_REMOTE"
-          exit 1
-        }
-        chmod "$ORIG_PERMS" "$SCRIPT_PATH" || true
-      fi
-      sync "$SCRIPT_PATH" || true
-      echo
-      echo -e "${GREEN}[+] Script updated. Please re-run BuildCryptoShred.sh.${NC}"
-      rm -f "$TMP_REMOTE"
-      exit 0
-    else
-      echo -e "${GREEN}[+] BuildCryptoShred.sh is up to date (sha256 match: ${LOCAL_HASH:0:16}...)${NC}"
-      rm -f "$TMP_REMOTE"
-    fi
-  else
-    echo -e "${RED}[!] Could not download remote script for comparison. Continuing with local version.${NC}"
-    rm -f "$TMP_REMOTE"
-  fi
+  echo -e "${YELLOW}[*] Could not update BuildCryptoShred.sh, continuing with current version.${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -442,70 +502,16 @@ CRYPTOSHRED_API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}
 CRYPTOSHRED_RAW_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${REF}/${CRYPTOSHRED_REMOTE_PATH}"
 
 echo
-echo -e "${YELLOW}[*] Checking remote CryptoShred.sh for updates...${NC}"
-
-REMOTE_CRYPT_SHA="$(get_remote_blob_sha "$CRYPTOSHRED_API_URL")"
-LOCAL_CRYPT_BLOB=""
-if command -v git >/dev/null 2>&1 && [ -f "$LOCAL_CRYPTOSHRED" ]; then
-  LOCAL_CRYPT_BLOB=$(git hash-object "$LOCAL_CRYPTOSHRED" 2>/dev/null || true)
-fi
-
-if [ -n "$REMOTE_CRYPT_SHA" ] && [ -n "$LOCAL_CRYPT_BLOB" ] && [ "$REMOTE_CRYPT_SHA" = "$LOCAL_CRYPT_BLOB" ]; then
-  echo -e "${GREEN}[+] Local CryptoShred.sh is up to date (git blob sha match).${NC}"
-else
-  echo -e "${YELLOW}[*] Remote CryptoShred.sh differs or verification unavailable; downloading for validation...${NC}"
-  TMP_REMOTE_CRYPT="$(mktemp)" || { echo -e "${RED}[!] Failed to create temp file.${NC}"; exit 1; }
-
-  if ! curl "${CURL_OPTS[@]}" -o "$TMP_REMOTE_CRYPT" "$CRYPTOSHRED_RAW_URL"; then
-    echo -e "${RED}[!] Failed to download CryptoShred.sh from $CRYPTOSHRED_RAW_URL. Continuing with local copy.${NC}"
-    rm -f "$TMP_REMOTE_CRYPT"
+# Use the download and validate function for CryptoShred.sh (workspace mode)
+if ! download_and_validate "$CRYPTOSHRED_API_URL" "$CRYPTOSHRED_RAW_URL" "$LOCAL_CRYPTOSHRED" "true"; then
+  echo -e "${RED}[!] Failed to download/validate CryptoShred.sh. Checking for local copy...${NC}"
+  
+  # Check if we have a local copy we can use
+  if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
+    echo -e "${RED}[!] No local CryptoShred.sh found. Cannot continue without the script.${NC}"
+    exit 1
   else
-    # Basic sanity: must start with a shell shebang
-    if ! sed -n '1p' "$TMP_REMOTE_CRYPT" | grep -qE '^#!.*/bin/(ba)?sh'; then
-      echo -e "${RED}[!] Downloaded CryptoShred.sh missing valid shebang. Rejecting.${NC}"
-      rm -f "$TMP_REMOTE_CRYPT"
-    else
-      # Prefer blob SHA verification via GitHub API (stronger, same algorithm as git)
-      if [ -n "$REMOTE_CRYPT_SHA" ] && command -v git >/dev/null 2>&1; then
-        DL_BLOB="$(git hash-object "$TMP_REMOTE_CRYPT" 2>/dev/null || true)"
-        if [ -n "$DL_BLOB" ] && [ "$DL_BLOB" = "$REMOTE_CRYPT_SHA" ]; then
-          echo -e "${GREEN}[+] Download validated against GitHub API blob SHA.${NC}"
-          # Don't install into the host system. Put validated script into the build workspace
-          # so it will be embedded into the ISO only.
-          mkdir -p "$(dirname "$LOCAL_CRYPTOSHRED")"
-          cp -- "$TMP_REMOTE_CRYPT" "$LOCAL_CRYPTOSHRED" || { echo -e "${RED}[!] Copy failed to $LOCAL_CRYPTOSHRED.${NC}"; rm -f "$TMP_REMOTE_CRYPT"; exit 1; }
-          chmod 0755 "$LOCAL_CRYPTOSHRED" || true
-          sync "$LOCAL_CRYPTOSHRED" || true
-          echo -e "${GREEN}[+] CryptoShred.sh downloaded to $LOCAL_CRYPTOSHRED (will be embedded into ISO).${NC}"
-          rm -f "$TMP_REMOTE_CRYPT"
-        else
-          echo -e "${RED}[!] Download blob SHA mismatch (expected ${REMOTE_CRYPT_SHA:-<none>}). Rejecting.${NC}"
-          echo "    Downloaded: ${DL_BLOB:-<missing>}"
-          rm -f "$TMP_REMOTE_CRYPT"
-        fi
-      else
-        # Fallback: sha256 compare (less ideal but useful when git/API not available)
-        REMOTE_HASH=$(sha256sum "$TMP_REMOTE_CRYPT" | cut -d' ' -f1)
-        LOCAL_HASH=$([ -f "$LOCAL_CRYPTOSHRED" ] && sha256sum "$LOCAL_CRYPTOSHRED" | cut -d' ' -f1 || echo "")
-        if [ -z "$REMOTE_HASH" ]; then
-          echo -e "${RED}[!] Could not compute remote sha256. Rejecting download.${NC}"
-          rm -f "$TMP_REMOTE_CRYPT"
-        elif [ -z "$LOCAL_HASH" ] || [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
-          echo -e "${YELLOW}[*] sha256 differs or local missing; downloading CryptoShred.sh for workspace...${NC}"
-          # Don't install into the host system. Put validated script into the build workspace
-          # so it will be embedded into the ISO only.
-          mkdir -p "$(dirname "$LOCAL_CRYPTOSHRED")"
-          cp -- "$TMP_REMOTE_CRYPT" "$LOCAL_CRYPTOSHRED" || { echo -e "${RED}[!] Copy failed to $LOCAL_CRYPTOSHRED.${NC}"; rm -f "$TMP_REMOTE_CRYPT"; exit 1; }
-          chmod 0755 "$LOCAL_CRYPTOSHRED" || true
-          sync "$LOCAL_CRYPTOSHRED" || true
-          echo -e "${GREEN}[+] CryptoShred.sh downloaded to $LOCAL_CRYPTOSHRED (will be embedded into ISO).${NC}"
-          rm -f "$TMP_REMOTE_CRYPT"
-        else
-          echo -e "${GREEN}[+] Downloaded CryptoShred.sh matches local sha256; no update needed.${NC}"
-          rm -f "$TMP_REMOTE_CRYPT"
-        fi
-      fi
-    fi
+    echo -e "${YELLOW}[*] Using existing local CryptoShred.sh copy.${NC}"
   fi
 fi
 
