@@ -827,7 +827,7 @@ USB_END_TIME=$(date +%s)
 USB_ELAPSED=$((USB_END_TIME - USB_START_TIME))
 FIRST_USB_ELAPSED=$((USB_END_TIME - START_TIME))
 echo -e "${GREEN}[+] USB ($USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec${NC}"
-echo -e "${GREEN}[+] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). ${GREEN}Total elapsed time for first USB: ${YELLOW}$((FIRST_USB_ELAPSED / 60)) min $((FIRST_USB_ELAPSED % 60)) sec${NC}"
+echo -e "${GREEN}[+] Script was started at: ${YELLOW}$(date -d "@$START_TIME" "+%Y-%m-%d %H:%M:%S"). ${GREEN}Total elapsed time for first USB: ${YELLOW}$((FIRST_USB_ELAPSED / 60)) min $((FIRST_USB_ELAPSED % 60)) sec${NC}"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # ADDITIONAL USB CREATION LOOP
@@ -881,7 +881,7 @@ while true; do
       echo
       echo -e "${GREEN}[+] USB ($NEW_USBDEV) flashing completed successfully!${NC}"
       echo -e "${GREEN}[+] USB ($NEW_USBDEV) write completed in ${YELLOW}$((USB_ELAPSED / 60)) min $((USB_ELAPSED % 60)) sec${NC}"
-      echo -e "${GREEN}[+] Script was started at: ${YELLOW}$(date -d "@$START_TIME" '+%Y-%m-%d %H:%M:%S'). ${GREEN}Total elapsed time for THIS USB: ${YELLOW}$((THIS_USB_ELAPSED / 60)) min $((THIS_USB_ELAPSED % 60)) sec${NC}"
+      echo -e "${GREEN}[+] Script was started at: ${YELLOW}$(date -d "@$START_TIME" "+%Y-%m-%d %H:%M:%S"). ${GREEN}Total elapsed time for THIS USB: ${YELLOW}$((THIS_USB_ELAPSED / 60)) min $((THIS_USB_ELAPSED % 60)) sec${NC}"
       ;;
     [Nn]|[Nn][Oo])
       echo
