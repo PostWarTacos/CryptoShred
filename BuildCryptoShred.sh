@@ -458,6 +458,9 @@ CRYPTOSHRED_REMOTE_PATH="CryptoShred.sh"
 CRYPTOSHRED_API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${CRYPTOSHRED_REMOTE_PATH}?ref=${REF}"
 CRYPTOSHRED_RAW_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${REF}/${CRYPTOSHRED_REMOTE_PATH}"
 
+# Ensure LOCAL_CRYPTOSHRED points to the intended local path
+LOCAL_CRYPTOSHRED="${LOCAL_CRYPTOSHRED:-$CRYPTOSHRED_SCRIPT}"
+
 echo
 # Use the download and validate function for CryptoShred.sh (workspace mode)
 if ! download_and_validate "$CRYPTOSHRED_API_URL" "$CRYPTOSHRED_RAW_URL" "$LOCAL_CRYPTOSHRED" "true"; then
@@ -507,13 +510,6 @@ if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR" ]; then
   fi
   echo -e "${RED}[!] Using fallback script directory: $SCRIPT_DIR${NC}"
 fi
-
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-# DOWNLOAD OR UPDATE CRYPTOSHRED.SH (validated via GitHub API blob SHA)
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-# Ensure LOCAL_CRYPTOSHRED points to the intended local path
-LOCAL_CRYPTOSHRED="${LOCAL_CRYPTOSHRED:-$CRYPTOSHRED_SCRIPT}"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # DEBIAN ISO DOWNLOAD
