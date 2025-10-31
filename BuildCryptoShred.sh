@@ -433,31 +433,6 @@ fi
 # DOWNLOAD OR UPDATE CRYPTOSHRED.SH (validated via GitHub API blob SHA)
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-# # ...existing code...
-#         echo -e "${GREEN}[+] Download validated against GitHub API blob SHA.${NC}"
-# -        ORIG_PERMS=$(stat -c %a "$LOCAL_CRYPTOSHRED" 2>/dev/null || echo 0755)
-# -        chmod +x "$TMP_REMOTE_CRYPT" || true
-# -        if command -v install >/dev/null 2>&1; then
-# -          install -m "$ORIG_PERMS" "$TMP_REMOTE_CRYPT" "$LOCAL_CRYPTOSHRED" || { echo -e "${RED}[!] Install failed.${NC}"; rm -f "$TMP_REMOTE_CRYPT"; exit 1; }
-# -        else
-# -          mkdir -p "$(dirname "$LOCAL_CRYPTOSHRED")"
-# -          cp -- "$TMP_REMOTE_CRYPT" "$LOCAL_CRYPTOSHRED" || { echo -e "${RED}[!] Copy failed.${NC}"; rm -f "$TMP_REMOTE_CRYPT"; exit 1; }
-# -          chmod "$ORIG_PERMS" "$LOCAL_CRYPTOSHRED" || true
-# -        fi
-# -        sync "$LOCAL_CRYPTOSHRED" || true
-# -        echo -e "${GREEN}[+] CryptoShred.sh updated at $LOCAL_CRYPTOSHRED${NC}"
-# -        rm -f "$TMP_REMOTE_CRYPT"
-# +        # Don't install into the host system. Put validated script into the build workspace
-# +        # so it will be embedded into the ISO only.
-# +        mkdir -p "$(dirname "$LOCAL_CRYPTOSHRED")"
-# +        cp -- "$TMP_REMOTE_CRYPT" "$LOCAL_CRYPTOSHRED" || { echo -e "${RED}[!] Copy failed to $LOCAL_CRYPTOSHRED.${NC}"; rm -f "$TMP_REMOTE_CRYPT"; exit 1; }
-# +        chmod 0755 "$LOCAL_CRYPTOSHRED" || true
-# +        sync "$LOCAL_CRYPTOSHRED" || true
-# +        echo -e "${GREEN}[+] CryptoShred.sh downloaded to $LOCAL_CRYPTOSHRED (will be embedded into ISO).${NC}"
-# +        rm -f "$TMP_REMOTE_CRYPT"
-# # ...existing code...
-
-
 # Ensure LOCAL_CRYPTOSHRED points to the intended local path
 LOCAL_CRYPTOSHRED="${LOCAL_CRYPTOSHRED:-$CRYPTOSHRED_SCRIPT}"
 
@@ -495,17 +470,14 @@ else
         DL_BLOB="$(git hash-object "$TMP_REMOTE_CRYPT" 2>/dev/null || true)"
         if [ -n "$DL_BLOB" ] && [ "$DL_BLOB" = "$REMOTE_CRYPT_SHA" ]; then
           echo -e "${GREEN}[+] Download validated against GitHub API blob SHA.${NC}"
-          ORIG_PERMS=$(stat -c %a "$LOCAL_CRYPTOSHRED" 2>/dev/null || echo 0755)
-          chmod +x "$TMP_REMOTE_CRYPT" || true
-          if command -v install >/dev/null 2>&1; then
-            install -m "$ORIG_PERMS" "$TMP_REMOTE_CRYPT" "$LOCAL_CRYPTOSHRED" || { echo -e "${RED}[!] Install failed.${NC}"; rm -f "$TMP_REMOTE_CRYPT"; exit 1; }
-          else
-            mkdir -p "$(dirname "$LOCAL_CRYPTOSHRED")"
-            cp -- "$TMP_REMOTE_CRYPT" "$LOCAL_CRYPTOSHRED" || { echo -e "${RED}[!] Copy failed.${NC}"; rm -f "$TMP_REMOTE_CRYPT"; exit 1; }
-            chmod "$ORIG_PERMS" "$LOCAL_CRYPTOSHRED" || true
-          fi
+          # Don't install into the host system. Put validated script into the build workspace
+          # so it will be embedded into the ISO only.
+          mkdir -p "$(dirname "$LOCAL_CRYPTOSHRED")"
+          cp -- "$TMP_REMOTE_CRYPT" "$LOCAL_CRYPTOSHRED" || { echo -e "${RED}[!] Copy failed to $LOCAL_CRYPTOSHRED.${NC}"; rm -f "$TMP_REMOTE_CRYPT"; exit 1; }
+          chmod 0755 "$LOCAL_CRYPTOSHRED" || true
           sync "$LOCAL_CRYPTOSHRED" || true
-          echo -e "${GREEN}[+] CryptoShred.sh updated at $LOCAL_CRYPTOSHRED${NC}"
+          echo -e "${GREEN}[+] CryptoShred.sh downloaded to $LOCAL_CRYPTOSHRED (will be embedded into ISO).${NC}"
+          rm -f "$TMP_REMOTE_CRYPT"
         else
           echo -e "${RED}[!] Download blob SHA mismatch (expected ${REMOTE_CRYPT_SHA:-<none>}). Rejecting.${NC}"
           echo "    Downloaded: ${DL_BLOB:-<missing>}"
@@ -519,18 +491,14 @@ else
           echo -e "${RED}[!] Could not compute remote sha256. Rejecting download.${NC}"
           rm -f "$TMP_REMOTE_CRYPT"
         elif [ -z "$LOCAL_HASH" ] || [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
-          echo -e "${YELLOW}[*] sha256 differs or local missing; installing downloaded CryptoShred.sh...${NC}"
-          ORIG_PERMS=$(stat -c %a "$LOCAL_CRYPTOSHRED" 2>/dev/null || echo 0755)
-          chmod +x "$TMP_REMOTE_CRYPT" || true
-          if command -v install >/dev/null 2>&1; then
-            install -m "$ORIG_PERMS" "$TMP_REMOTE_CRYPT" "$LOCAL_CRYPTOSHRED" || { echo -e "${RED}[!] Install failed.${NC}"; rm -f "$TMP_REMOTE_CRYPT"; exit 1; }
-          else
-            mkdir -p "$(dirname "$LOCAL_CRYPTOSHRED")"
-            cp -- "$TMP_REMOTE_CRYPT" "$LOCAL_CRYPTOSHRED" || { echo -e "${RED}[!] Copy failed.${NC}"; rm -f "$TMP_REMOTE_CRYPT"; exit 1; }
-            chmod "$ORIG_PERMS" "$LOCAL_CRYPTOSHRED" || true
-          fi
+          echo -e "${YELLOW}[*] sha256 differs or local missing; downloading CryptoShred.sh for workspace...${NC}"
+          # Don't install into the host system. Put validated script into the build workspace
+          # so it will be embedded into the ISO only.
+          mkdir -p "$(dirname "$LOCAL_CRYPTOSHRED")"
+          cp -- "$TMP_REMOTE_CRYPT" "$LOCAL_CRYPTOSHRED" || { echo -e "${RED}[!] Copy failed to $LOCAL_CRYPTOSHRED.${NC}"; rm -f "$TMP_REMOTE_CRYPT"; exit 1; }
+          chmod 0755 "$LOCAL_CRYPTOSHRED" || true
           sync "$LOCAL_CRYPTOSHRED" || true
-          echo -e "${GREEN}[+] CryptoShred.sh installed/updated at $LOCAL_CRYPTOSHRED${NC}"
+          echo -e "${GREEN}[+] CryptoShred.sh downloaded to $LOCAL_CRYPTOSHRED (will be embedded into ISO).${NC}"
           rm -f "$TMP_REMOTE_CRYPT"
         else
           echo -e "${GREEN}[+] Downloaded CryptoShred.sh matches local sha256; no update needed.${NC}"
