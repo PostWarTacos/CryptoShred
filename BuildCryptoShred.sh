@@ -26,11 +26,8 @@ NC='\033[0m' # No Color
 # Function to get remote blob SHA from GitHub API
 get_remote_blob_sha() {
   # arg1 = api url
-  local result=$(curl "${CURL_OPTS[@]}" "${AUTH_HDR[@]}" -H "Accept: application/vnd.github.v3+json" "$1" 2>/dev/null \
-    | sed -n 's/.*"sha": *"\([^"]*\)".*/\1/p' || true)
-  echo -e "${YELLOW}[DEBUG] get_remote_blob_sha called with: $1${NC}" >&2
-  echo -e "${YELLOW}[DEBUG] get_remote_blob_sha result: '${result}' (length: ${#result})${NC}" >&2
-  printf '%s' "$result"
+  curl "${CURL_OPTS[@]}" "${AUTH_HDR[@]}" -H "Accept: application/vnd.github.v3+json" "$1" 2>/dev/null \
+    | sed -n 's/.*"sha": *"\([^"]*\)".*/\1/p' || true
 }
 
 # Safe file installation function
@@ -67,12 +64,6 @@ download_and_validate() {
   if command -v git >/dev/null 2>&1 && [ -f "$target_file" ]; then
     local_blob=$(git hash-object "$target_file" 2>/dev/null || true)
   fi
-  
-  # Debug output - can be removed later
-  echo -e "${YELLOW}[DEBUG] Remote SHA: '${remote_sha}' (length: ${#remote_sha})${NC}"
-  echo -e "${YELLOW}[DEBUG] Local blob: '${local_blob}' (length: ${#local_blob})${NC}"
-  echo -e "${YELLOW}[DEBUG] File exists: $([ -f "$target_file" ] && echo "YES" || echo "NO")${NC}"
-  echo -e "${YELLOW}[DEBUG] Git available: $(command -v git >/dev/null 2>&1 && echo "YES" || echo "NO")${NC}"
   
   # Check if up to date
   if [ -n "$remote_sha" ] && [ -n "$local_blob" ] && [ "$remote_sha" = "$local_blob" ]; then
@@ -462,6 +453,20 @@ fi
 chmod 700 "$WORKDIR"
 cd "$WORKDIR"
 
+echo
+# Use the download and validate function for CryptoShred.sh (workspace mode)
+if ! download_and_validate "$CRYPTOSHRED_API_URL" "$CRYPTOSHRED_RAW_URL" "$LOCAL_CRYPTOSHRED" "true"; then
+  echo -e "${RED}[!] Failed to download/validate CryptoShred.sh. Checking for local copy...${NC}"
+  
+  # Check if we have a local copy we can use
+  if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
+    echo -e "${RED}[!] No local CryptoShred.sh found. Cannot continue without the script.${NC}"
+    exit 1
+  else
+    echo -e "${YELLOW}[*] Using existing local CryptoShred.sh copy.${NC}"
+  fi
+fi
+
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # CRYPTOSHRED SCRIPT PREPARATION
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -509,20 +514,6 @@ LOCAL_CRYPTOSHRED="${LOCAL_CRYPTOSHRED:-$CRYPTOSHRED_SCRIPT}"
 CRYPTOSHRED_REMOTE_PATH="CryptoShred.sh"
 CRYPTOSHRED_API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${CRYPTOSHRED_REMOTE_PATH}?ref=${REF}"
 CRYPTOSHRED_RAW_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${REF}/${CRYPTOSHRED_REMOTE_PATH}"
-
-echo
-# Use the download and validate function for CryptoShred.sh (workspace mode)
-if ! download_and_validate "$CRYPTOSHRED_API_URL" "$CRYPTOSHRED_RAW_URL" "$LOCAL_CRYPTOSHRED" "true"; then
-  echo -e "${RED}[!] Failed to download/validate CryptoShred.sh. Checking for local copy...${NC}"
-  
-  # Check if we have a local copy we can use
-  if [ ! -f "$LOCAL_CRYPTOSHRED" ]; then
-    echo -e "${RED}[!] No local CryptoShred.sh found. Cannot continue without the script.${NC}"
-    exit 1
-  else
-    echo -e "${YELLOW}[*] Using existing local CryptoShred.sh copy.${NC}"
-  fi
-fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # DEBIAN ISO DOWNLOAD
