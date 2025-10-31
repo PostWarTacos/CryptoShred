@@ -26,8 +26,11 @@ NC='\033[0m' # No Color
 # Function to get remote blob SHA from GitHub API
 get_remote_blob_sha() {
   # arg1 = api url
-  curl "${CURL_OPTS[@]}" "${AUTH_HDR[@]}" -H "Accept: application/vnd.github.v3+json" "$1" 2>/dev/null \
-    | sed -n 's/.*"sha": *"\([^"]*\)".*/\1/p' || true
+  local result=$(curl "${CURL_OPTS[@]}" "${AUTH_HDR[@]}" -H "Accept: application/vnd.github.v3+json" "$1" 2>/dev/null \
+    | sed -n 's/.*"sha": *"\([^"]*\)".*/\1/p' || true)
+  echo -e "${YELLOW}[DEBUG] get_remote_blob_sha called with: $1${NC}" >&2
+  echo -e "${YELLOW}[DEBUG] get_remote_blob_sha result: '${result}' (length: ${#result})${NC}" >&2
+  printf '%s' "$result"
 }
 
 # Safe file installation function
@@ -64,6 +67,12 @@ download_and_validate() {
   if command -v git >/dev/null 2>&1 && [ -f "$target_file" ]; then
     local_blob=$(git hash-object "$target_file" 2>/dev/null || true)
   fi
+  
+  # Debug output - can be removed later
+  echo -e "${YELLOW}[DEBUG] Remote SHA: '${remote_sha}' (length: ${#remote_sha})${NC}"
+  echo -e "${YELLOW}[DEBUG] Local blob: '${local_blob}' (length: ${#local_blob})${NC}"
+  echo -e "${YELLOW}[DEBUG] File exists: $([ -f "$target_file" ] && echo "YES" || echo "NO")${NC}"
+  echo -e "${YELLOW}[DEBUG] Git available: $(command -v git >/dev/null 2>&1 && echo "YES" || echo "NO")${NC}"
   
   # Check if up to date
   if [ -n "$remote_sha" ] && [ -n "$local_blob" ] && [ "$remote_sha" = "$local_blob" ]; then
