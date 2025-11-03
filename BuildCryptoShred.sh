@@ -23,8 +23,8 @@ NC='\033[0m' # No Color
 GITHUB_OWNER="PostWarTacos"
 GITHUB_REPO="CryptoShred"
 
-# Hardened curl options
-CURL_OPTS=( --fail --silent --show-error --location --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 )
+# Hardened curl options with progress display
+CURL_OPTS=( --fail --show-error --location --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 --progress-bar )
 
 # Allow token via environment to avoid rate limits / access private repos
 AUTH_HDR=()
@@ -97,7 +97,8 @@ read -p "Press Enter to continue..."
 # Function to get remote blob SHA from GitHub API
 get_remote_blob_sha() {
   # arg1 = api url
-  curl "${CURL_OPTS[@]}" "${AUTH_HDR[@]}" -H "Accept: application/vnd.github.v3+json" "$1" 2>/dev/null \
+  # Use silent mode for API calls (small JSON responses don't need progress bars)
+  curl --fail --silent --show-error --location --connect-timeout 10 --max-time 30 --retry 2 "${AUTH_HDR[@]}" -H "Accept: application/vnd.github.v3+json" "$1" 2>/dev/null \
     | sed -n 's/.*"sha": *"\([^"]*\)".*/\1/p' || true
 }
 
@@ -692,14 +693,14 @@ fi
 
 echo
 echo -e "${YELLOW}[*] Fetching latest Debian ISO link...${NC}"
-ISO_URL=$(curl -s "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | 
+ISO_URL=$(curl --fail --silent --show-error --location --connect-timeout 10 --max-time 30 --retry 2 "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | 
   grep -oP 'href="debian-live-[0-9.]+-amd64-standard\.iso"' | head -n1 | cut -d'"' -f2)
 
 # Check if ISO_URL was found
 if [ -z "$ISO_URL" ]; then
   echo -e "${RED}[!] Error: Could not find Debian ISO URL. Check internet connection or Debian mirrors.${NC}"
   echo "[DEBUG] Trying to list available ISOs..."
-  curl -s "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | grep -o 'debian-live-[^"]*\.iso' | head -5
+  curl --fail --silent --show-error --location --connect-timeout 10 --max-time 30 "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | grep -o 'debian-live-[^"]*\.iso' | head -5
   exit 1
 fi
 
@@ -707,8 +708,8 @@ echo -e "${YELLOW}[*] Found ISO: $ISO_URL${NC}"
 echo -e "${YELLOW}[*] Downloading $ISO_URL...${NC}"
 echo -e "${YELLOW}[*] This may take several minutes depending on your connection...${NC}"
 
-# Use wget with better progress display and error handling
-if ! wget --progress=bar:force "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/$ISO_URL" -O debian.iso; then
+# Use curl with progress bar for consistency with other downloads
+if ! curl --fail --show-error --location --connect-timeout 10 --max-time 3600 --retry 3 --retry-delay 5 --progress-bar -o debian.iso "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/$ISO_URL"; then
   echo -e "${RED}[!] Error: Failed to download Debian ISO${NC}"
   echo -e "${RED}[!] Please check your internet connection and try again${NC}"
   exit 1
