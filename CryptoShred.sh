@@ -25,24 +25,6 @@ NC='\033[0m' # No Color
 # Ensure TERM is set for proper terminal handling
 export TERM="${TERM:-linux}"
 
-# Debugging output
-# Uncomment the following lines to enable persistent logging
-# This will create a log file in /var/log/cryptoshred with timestamped entries
-# This is useful for debugging and inspecting runs after the system has booted
-
-# Persistent logging so we can inspect live runs after first boot
-# LOGDIR="/var/log/cryptoshred"
-# mkdir -p "$LOGDIR"
-# LOGFILE="$LOGDIR/cryptoshred-$(date +%Y%m%d-%H%M%S).log"
-# Redirect stdout/stderr to logfile while still echoing to console when possible
-# exec > >(tee -a "$LOGFILE") 2>&1
-
-# echo
-# echo "[LOGFILE] $LOGFILE"
-# echo "[INFO] Invoked by: $(whoami)"
-# echo "[INFO] Shell: $SHELL"
-# echo
-
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -58,7 +40,7 @@ prompt_enter() {
 prompt_read() {
   local prompt="${1:-}"
   local input=""
-  printf "%s" "$prompt" >&2
+  printf "%b" "$prompt" >&2
   read -r input 2>/dev/null || input=""
   printf '%s' "$input"
 }
@@ -100,11 +82,6 @@ else
     BOOT_DISK="${BASH_REMATCH[1]}"
   fi
 fi
-
-# Debugging output
-# echo "DEBUG: ROOT_PART='$ROOT_PART'"
-# echo "DEBUG: LIVE_MEDIUM='$LIVE_MEDIUM'"
-# echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
 
 prompt_enter "Press Enter to continue..."
 
