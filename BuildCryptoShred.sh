@@ -19,6 +19,19 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# GitHub repository configuration
+GITHUB_OWNER="PostWarTacos"
+GITHUB_REPO="CryptoShred"
+
+# Hardened curl options
+CURL_OPTS=( --fail --silent --show-error --location --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 )
+
+# Allow token via environment to avoid rate limits / access private repos
+AUTH_HDR=()
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  AUTH_HDR=( -H "Authorization: token ${GITHUB_TOKEN}" )
+fi
+
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # INTRODUCTION AND USER CONFIRMATION
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -337,15 +350,6 @@ fi
 # Handle version checking arguments
 case "${1:-}" in
   --version-check|--check-version)
-    # Initialize GitHub variables for quick version check
-    GITHUB_OWNER="PostWarTacos"
-    GITHUB_REPO="CryptoShred" 
-    CURL_OPTS=( --fail --silent --show-error --location --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 )
-    AUTH_HDR=()
-    if [ -n "${GITHUB_TOKEN:-}" ]; then
-      AUTH_HDR=( -H "Authorization: token ${GITHUB_TOKEN}" )
-    fi
-    
     branch="${2:-main}"
     echo -e "${BLUE}[*] Checking BuildCryptoShred.sh against $branch branch using hash comparison...${NC}"
     
@@ -516,23 +520,12 @@ done
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # GitHub repo info for self-update
-GITHUB_OWNER="PostWarTacos"
-GITHUB_REPO="CryptoShred"
 BUILD_REMOTE_PATH="BuildCryptoShred.sh"
 # REF is set earlier based on user choice
 
 # API and raw URLs
 API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${BUILD_REMOTE_PATH}?ref=${REF}"
 RAW_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${REF}/${BUILD_REMOTE_PATH}"
-
-# Hardened curl options
-CURL_OPTS=( --fail --silent --show-error --location --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 )
-
-# Allow token via environment to avoid rate limits / access private repos
-AUTH_HDR=()
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-  AUTH_HDR=( -H "Authorization: token ${GITHUB_TOKEN}" )
-fi
 
 SCRIPT_PATH="$(resolve_self_path)"
 # Fallback: if resolution failed, use $0 as-is
