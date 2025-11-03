@@ -20,6 +20,27 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# INTRODUCTION AND USER CONFIRMATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+echo
+echo "================================================== CryptoShred ISO Builder =================================================="
+echo
+echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
+echo "Version 1.9 - 2025-10-29"
+echo
+echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
+echo "The resulting ISO will be written directly to the specified USB device."
+echo "Make sure to change the USB device and script are in place before proceeding."
+echo
+echo -e "${RED}WARNING: This will ERASE ALL DATA on the specified USB device.${NC}"
+echo -e "${RED}IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in.${NC}"
+echo
+echo "============================================================================================================================="
+echo
+read -p "Press Enter to continue..."
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # FUNCTION DEFINITIONS
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -44,11 +65,11 @@ safe_install_file() {
   return 0
 }
 
-# Download and validate function with Git blob SHA verification
-# Usage: download_and_validate "api_url" "raw_url" "target_file" "workspace_mode" ["exit_on_update"]
+# Download and validate function with Git blob SHA verification (only downloads if updated)
+# Usage: download_if_updated "api_url" "raw_url" "target_file" "workspace_mode" ["exit_on_update"]
 # workspace_mode: "true" for workspace-only install, "false" for host system install
 # exit_on_update: "true" to exit script after successful update (for self-update)
-download_and_validate() {
+download_if_updated() {
   local api_url="$1"
   local raw_url="$2" 
   local target_file="$3"
@@ -64,7 +85,7 @@ download_and_validate() {
   if command -v git >/dev/null 2>&1 && [ -f "$target_file" ]; then
     local_blob=$(git hash-object "$target_file" 2>/dev/null || true)
   fi
-  
+
   # Check if up to date
   if [ -n "$remote_sha" ] && [ -n "$local_blob" ] && [ "$remote_sha" = "$local_blob" ]; then
     echo -e "${GREEN}[+] Local $script_name is up to date (git blob sha match).${NC}"
@@ -72,6 +93,40 @@ download_and_validate() {
   fi
 
   echo -e "${YELLOW}[*] Remote $script_name differs or verification unavailable; downloading now...${NC}"
+  _perform_download_and_validate "$api_url" "$raw_url" "$target_file" "$workspace_mode" "$exit_on_update" "$remote_sha"
+}
+
+# Always download and validate function (skips hash check, always downloads but still verifies)
+# Usage: download_always "api_url" "raw_url" "target_file" "workspace_mode" ["exit_on_update"]
+# workspace_mode: "true" for workspace-only install, "false" for host system install  
+# exit_on_update: "true" to exit script after successful update
+download_always() {
+  local api_url="$1"
+  local raw_url="$2"
+  local target_file="$3" 
+  local workspace_mode="${4:-false}"
+  local exit_on_update="${5:-false}"
+  local script_name="$(basename "$target_file")"
+  
+  echo -e "${YELLOW}[*] Downloading $script_name...${NC}"
+  
+  # Get remote SHA for verification
+  local remote_sha="$(get_remote_blob_sha "$api_url")"
+  
+  _perform_download_and_validate "$api_url" "$raw_url" "$target_file" "$workspace_mode" "$exit_on_update" "$remote_sha"
+}
+
+# Internal function to perform the actual download and validation logic
+# Used by both download_if_updated and download_always to avoid code duplication
+_perform_download_and_validate() {
+  local api_url="$1"
+  local raw_url="$2"
+  local target_file="$3"
+  local workspace_mode="$4"
+  local exit_on_update="$5"
+  local remote_sha="$6"
+  local script_name="$(basename "$target_file")"
+  
   local tmp_file="$(mktemp)" || { echo -e "${RED}[!] Failed to create temp file.${NC}"; return 1; }
   
   # Download file
@@ -239,34 +294,6 @@ if [ -z "${BASH_VERSION:-}" ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-# DEBUGGING AND LOGGING SETUP (DISABLED)
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-# Debugging output
-# Create a logfile to capture the full run for debugging (timestamped)
-# LOGDIR="/var/log/cryptoshred"
-# mkdir -p "$LOGDIR"
-# LOGFILE="$LOGDIR/build-$(date +%Y%m%d-%H%M%S).log"
-# Redirect stdout/stderr to logfile while still allowing console output when interactive
-# exec > >(tee -a "$LOGFILE") 2>&1
-
-# echo
-# echo "[LOGFILE] $LOGFILE"
-# echo "[INFO] Invoked by: $(whoami) (SUDO_USER=${SUDO_USER:-undefined})"
-# echo "[INFO] Shell: $SHELL" 
-# echo "[INFO] PATH: $PATH"
-# echo "[INFO] HOME: $HOME" 
-# echo "[INFO] Real home inferred: ${REAL_HOME:-unset}"
-# echo "[INFO] Environment dump:" 
-# env | sort
-
-# Enable tracing after logfile is ready if requested by DEBUG or by honoring
-# an inherited -x (set HONOR_SHELL_XTRACE=1 to enable in that case).
-# if [ "${DEBUG:-0}" -ne 0 ] || { [ "${HONOR_SHELL_XTRACE:-0}" -ne 0 ] && [ "$INHERITED_XTRACE" -eq 1 ]; }; then
-#   set -x
-# fi
-
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # ROOT PERMISSION CHECK
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -359,34 +386,13 @@ echo
 echo -e "${YELLOW}[*] Checking for BuildCryptoShred.sh updates using GitHub API blob SHA...${NC}"
 
 # Use the download and validate function for self-update
-if download_and_validate "$API_URL" "$RAW_URL" "$SCRIPT_PATH" "false" "true"; then
+if download_if_updated "$API_URL" "$RAW_URL" "$SCRIPT_PATH" "false" "true"; then
   # If function returns 0 but file was updated, it will have already exited
   # If we get here, either file is up to date or there was an error that we can continue from
   echo -e "${GREEN}[+] BuildCryptoShred.sh check completed.${NC}"
 else
   echo -e "${YELLOW}[*] Could not update BuildCryptoShred.sh, continuing with current version.${NC}"
 fi
-
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-# INTRODUCTION AND USER CONFIRMATION
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-echo
-echo "================================================== CryptoShred ISO Builder =================================================="
-echo
-echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
-echo "Version 1.9 - 2025-10-29"
-echo
-echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
-echo "The resulting ISO will be written directly to the specified USB device."
-echo "Make sure to change the USB device and script are in place before proceeding."
-echo
-echo -e "${RED}WARNING: This will ERASE ALL DATA on the specified USB device.${NC}"
-echo -e "${RED}IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in.${NC}"
-echo
-echo "============================================================================================================================="
-echo
-read -p "Press Enter to continue..."
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION AND SETUP
@@ -479,8 +485,8 @@ CRYPTOSHRED_RAW_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_
 LOCAL_CRYPTOSHRED="${LOCAL_CRYPTOSHRED:-$CRYPTOSHRED_SCRIPT}"
 
 echo
-# Use the download and validate function for CryptoShred.sh (workspace mode)
-if ! download_and_validate "$CRYPTOSHRED_API_URL" "$CRYPTOSHRED_RAW_URL" "$LOCAL_CRYPTOSHRED" "true"; then
+# Use the download always function for CryptoShred.sh (workspace mode)
+if ! download_always "$CRYPTOSHRED_API_URL" "$CRYPTOSHRED_RAW_URL" "$LOCAL_CRYPTOSHRED" "true"; then
   echo -e "${RED}[!] Failed to download/validate CryptoShred.sh. Checking for local copy...${NC}"
   
   # Check if we have a local copy we can use
