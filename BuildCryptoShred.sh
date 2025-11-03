@@ -421,6 +421,48 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# BUILD ENVIRONMENT CLEANUP (FIRST RUN ONLY)
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+echo
+echo -e "${YELLOW}[*] Downloading and running build environment cleanup script...${NC}"
+
+# Setup cleanup script download URLs (using same branch as selected earlier)
+CLEANUP_REMOTE_PATH="CleanupBuildEnvironment.sh"
+CLEANUP_API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${CLEANUP_REMOTE_PATH}?ref=${REF}"
+CLEANUP_RAW_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${REF}/${CLEANUP_REMOTE_PATH}"
+
+# Create temporary file for cleanup script
+CLEANUP_SCRIPT=$(mktemp) || { echo -e "${RED}[!] Failed to create temp file for cleanup script.${NC}"; exit 1; }
+
+# Download cleanup script using existing download function
+if download_always "$CLEANUP_API_URL" "$CLEANUP_RAW_URL" "$CLEANUP_SCRIPT" "true"; then
+  echo -e "${GREEN}[+] CleanupBuildEnvironment.sh downloaded and validated successfully.${NC}"
+  echo -e "${YELLOW}[*] Running build environment cleanup...${NC}"
+  
+  # Make script executable and run it
+  chmod +x "$CLEANUP_SCRIPT"
+  
+  # Run the cleanup script and capture its exit status
+  if bash "$CLEANUP_SCRIPT"; then
+    echo -e "${GREEN}[+] Build environment cleanup completed successfully${NC}"
+  else
+    echo -e "${YELLOW}[!] Cleanup script completed with warnings (this is often normal)${NC}"
+    echo -e "${YELLOW}[*] Continuing with build process...${NC}"
+  fi
+  
+  # Give system a moment to settle after cleanup
+  echo -e "${YELLOW}[*] Allowing system to settle after cleanup...${NC}"
+  sleep 3
+else
+  echo -e "${RED}[!] Failed to download or validate CleanupBuildEnvironment.sh from GitHub.${NC}"
+  echo -e "${YELLOW}[*] Continuing without cleanup - this may cause build issues if previous builds left artifacts.${NC}"
+fi
+
+# Clean up temporary file
+rm -f "$CLEANUP_SCRIPT"
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # TIMING AND CLEANUP SETUP
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
