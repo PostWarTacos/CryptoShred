@@ -38,6 +38,43 @@ echo -e "${RED}IMPORTANT!!! Make sure your target USB device (device to have Deb
 echo
 echo "============================================================================================================================="
 echo
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# BRANCH SELECTION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+echo -e "${YELLOW}Select which branch to use for CryptoShred scripts:${NC}"
+echo "  1) Main branch (stable, default)"
+echo "  2) Develop branch (latest features)"
+echo "  3) Custom branch"
+echo
+read -p "Select option (1-3) [default: 1]: " BRANCH_CHOICE
+
+case "${BRANCH_CHOICE:-1}" in
+  1|"")
+    REF="main"
+    echo -e "${GREEN}[+] Using main branch (stable)${NC}"
+    ;;
+  2)
+    REF="develop" 
+    echo -e "${GREEN}[+] Using develop branch (latest features)${NC}"
+    ;;
+  3)
+    read -p "Enter custom branch name: " CUSTOM_BRANCH
+    if [[ -n "$CUSTOM_BRANCH" ]]; then
+      REF="$CUSTOM_BRANCH"
+      echo -e "${GREEN}[+] Using custom branch: $REF${NC}"
+    else
+      echo -e "${YELLOW}[!] No branch name provided, defaulting to main${NC}"
+      REF="main"
+    fi
+    ;;
+  *)
+    echo -e "${YELLOW}[!] Invalid option, defaulting to main branch${NC}"
+    REF="main"
+    ;;
+esac
+
 read -p "Press Enter to continue..."
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -294,6 +331,85 @@ if [ -z "${BASH_VERSION:-}" ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# COMMAND LINE ARGUMENT HANDLING
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+# Handle version checking arguments
+case "${1:-}" in
+  --version-check|--check-version)
+    # Initialize GitHub variables for quick version check
+    GITHUB_OWNER="PostWarTacos"
+    GITHUB_REPO="CryptoShred" 
+    CURL_OPTS=( --fail --silent --show-error --location --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 )
+    AUTH_HDR=()
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+      AUTH_HDR=( -H "Authorization: token ${GITHUB_TOKEN}" )
+    fi
+    
+    branch="${2:-main}"
+    echo -e "${BLUE}[*] Checking BuildCryptoShred.sh against $branch branch using hash comparison...${NC}"
+    
+    # Use existing hash-based checking functions
+    build_api_url="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/BuildCryptoShred.sh?ref=${branch}"
+    build_raw_url="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${branch}/BuildCryptoShred.sh"
+    
+    # Get script path
+    script_path="$(resolve_self_path)"
+    if [ -z "$script_path" ] || [ ! -f "$script_path" ]; then
+      script_path="$0"
+    fi
+    
+    # Use the existing download_if_updated function in check-only mode
+    echo -e "${YELLOW}[*] Comparing local and remote hashes...${NC}"
+    
+    # Get remote and local blob SHAs using existing function
+    remote_sha="$(get_remote_blob_sha "$build_api_url")"
+    local_blob=""
+    if command -v git >/dev/null 2>&1 && [ -f "$script_path" ]; then
+      local_blob=$(git hash-object "$script_path" 2>/dev/null || true)
+    fi
+
+    # Compare hashes
+    if [ -n "$remote_sha" ] && [ -n "$local_blob" ]; then
+      echo -e "${BLUE}[*] Local hash:  $local_blob${NC}"
+      echo -e "${BLUE}[*] Remote hash: $remote_sha${NC}"
+      
+      if [ "$remote_sha" = "$local_blob" ]; then
+        echo -e "${GREEN}[✓] Hashes match - BuildCryptoShred.sh is up to date with $branch branch${NC}"
+      else
+        echo -e "${YELLOW}[!] Hash mismatch - BuildCryptoShred.sh differs from $branch branch${NC}"
+      fi
+    else
+      echo -e "${YELLOW}[!] Could not determine hashes for comparison${NC}"
+      echo -e "${YELLOW}    Local hash: ${local_blob:-<missing>}${NC}"
+      echo -e "${YELLOW}    Remote hash: ${remote_sha:-<missing>}${NC}"
+    fi
+    exit 0
+    ;;
+  --help|-h)
+    echo "BuildCryptoShred - Create a bootable Debian-based ISO with CryptoShred pre-installed"
+    echo
+    echo "Usage: $0 [OPTIONS]"
+    echo
+    echo "Options:"
+    echo "  --version-check [branch]       Check BuildCryptoShred.sh version against branch (default: main)"
+    echo "  --help, -h                     Show this help message"
+    echo
+    echo "Examples:"
+    echo "  $0                             Run the ISO builder (will prompt for branch selection)"
+    echo "  $0 --version-check             Check version against main branch"
+    echo "  $0 --version-check develop     Check version against develop branch"
+    echo
+    exit 0
+    ;;
+  --*)
+    echo -e "${RED}Unknown option: $1${NC}"
+    echo "Use --help for usage information"
+    exit 1
+    ;;
+esac
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # ROOT PERMISSION CHECK
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -361,7 +477,7 @@ done
 GITHUB_OWNER="PostWarTacos"
 GITHUB_REPO="CryptoShred"
 BUILD_REMOTE_PATH="BuildCryptoShred.sh"
-REF="main"
+# REF is set earlier based on user choice
 
 # API and raw URLs
 API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${BUILD_REMOTE_PATH}?ref=${REF}"
@@ -384,6 +500,7 @@ fi
 
 echo
 echo -e "${YELLOW}[*] Checking for BuildCryptoShred.sh updates using GitHub API blob SHA...${NC}"
+echo -e "${BLUE}[*] Selected branch: $REF${NC}"
 
 # Use the download and validate function for self-update
 if download_if_updated "$API_URL" "$RAW_URL" "$SCRIPT_PATH" "false" "true"; then
