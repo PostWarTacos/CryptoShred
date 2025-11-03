@@ -159,8 +159,6 @@ download_always() {
   local exit_on_update="${5:-false}"
   local script_name="$(basename "$target_file")"
   
-  echo -e "${YELLOW}[*] Downloading $script_name...${NC}"
-  
   # Get remote SHA for verification
   local remote_sha="$(get_remote_blob_sha "$api_url")"
   
