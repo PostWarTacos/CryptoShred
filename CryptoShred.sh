@@ -181,7 +181,7 @@ echo -e "${YELLOW}[*] Preparing device /dev/$DEV for encryption...${NC}"
 
 # Check Opal first
 echo
-echo  "${YELLOW}[*] Checking for Opal hardware encryption support...${NC}"
+echo -e "${YELLOW}[*] Checking for Opal hardware encryption support...${NC}"
 # Query sedutil and inspect output for a locked state. Capture output so we can both detect support
 # and look for "Locked = Y". Be tolerant of whitespace/case.
 SEDOUT=$(sedutil-cli --query /dev/$DEV 2>/dev/null || true)
