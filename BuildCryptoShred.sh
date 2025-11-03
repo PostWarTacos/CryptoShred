@@ -40,7 +40,7 @@ echo
 echo "================================================== CryptoShred ISO Builder =================================================="
 echo
 echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
-echo "Version 1.9 - 2025-10-29"
+echo "Version 2.1 - 2025-10-29"
 echo
 echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
 echo "The resulting ISO will be written directly to the specified USB device."
@@ -116,6 +116,33 @@ safe_install_file() {
   return 0
 }
 
+# Helper function to prompt user for retry or exit
+# Usage: prompt_retry_or_exit "error_message" "cause_description"
+# Returns: never returns - either continues loop or exits script
+prompt_retry_or_exit() {
+  local error_msg="$1"
+  local cause_desc="$2"
+  
+  echo -e "${RED}[!] $error_msg${NC}"
+  echo -e "${YELLOW}$cause_desc${NC}"
+  echo
+  printf "%b" "${YELLOW}Choose an option:${NC}"
+  echo "  1) Retry download"
+  echo "  2) Exit script"
+  echo
+  read -p "Enter choice (1-2): " RETRY_CHOICE
+  case "${RETRY_CHOICE:-2}" in
+    1)
+      echo -e "${YELLOW}[*] Retrying download...${NC}"
+      return 0  # Signal to continue retry loop
+      ;;
+    *)
+      echo -e "${RED}[!] Exiting due to error.${NC}"
+      exit 1
+      ;;
+  esac
+}
+
 # Download and validate function with Git blob SHA verification (only downloads if updated)
 # Usage: download_if_updated "api_url" "raw_url" "target_file" "workspace_mode" ["exit_on_update"]
 # workspace_mode: "true" for workspace-only install, "false" for host system install
@@ -176,133 +203,95 @@ _perform_download_and_validate() {
   local remote_sha="$6"
   local script_name="$(basename "$target_file")"
   
-  local tmp_file="$(mktemp)" || { echo -e "${RED}[!] Failed to create temp file.${NC}"; return 1; }
+  # Retry loop for download and validation
+  while true; do
+    local tmp_file="$(mktemp)" || { echo -e "${RED}[!] Failed to create temp file.${NC}"; exit 1; }
   
-  # Download file using wget for better progress display
-  echo -e "${YELLOW}[*] Downloading $script_name...${NC}"
-  
-  # Prepare wget arguments
-  local wget_args=( --progress=bar:force:noscroll --show-progress --timeout=30 --tries=3 --retry-connrefused --waitretry=2 )
-  
-  # Add authentication header if available
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    wget_args+=( --header="Authorization: token ${GITHUB_TOKEN}" )
-  fi
-  
-  if ! wget "${wget_args[@]}" "$raw_url" -O "$tmp_file"; then
-    echo -e "${RED}[!] Failed to download $script_name from $raw_url.${NC}"
-    rm -f "$tmp_file"
-    return 1
-  fi
-  
-  # Basic sanity check for shell scripts
-  if [[ "$script_name" == *.sh ]] && ! sed -n '1p' "$tmp_file" | grep -qE '^#!.*/bin/(ba)?sh'; then
-    echo -e "${RED}[!] Downloaded $script_name missing valid shebang. Rejecting.${NC}"
-    rm -f "$tmp_file"
-    return 1
-  fi
-  
-  # Git blob SHA verification (preferred)
-  if [ -n "$remote_sha" ] && command -v git >/dev/null 2>&1; then
-    local dl_blob="$(git hash-object "$tmp_file" 2>/dev/null || true)"
-    if [ -n "$dl_blob" ] && [ "$dl_blob" = "$remote_sha" ]; then
-      echo -e "${GREEN}[+] Download validated against GitHub API blob SHA.${NC}"
-      
-      # Install based on mode
-      if [ "$workspace_mode" = "true" ]; then
-        # Workspace-only installation
-        if safe_install_file "$tmp_file" "$target_file" "0755"; then
-          echo -e "${GREEN}[+] $script_name downloaded to $target_file (will be embedded into ISO).${NC}"
-          rm -f "$tmp_file"
-          return 0
-        else
-          rm -f "$tmp_file"
-          return 1
-        fi
-      else
-        # Host system installation with permission preservation
-        local orig_perms=$(stat -c %a "$target_file" 2>/dev/null || echo 0755)
-        chmod +x "$tmp_file" || true
-        if command -v install >/dev/null 2>&1; then
-          install -m "$orig_perms" "$tmp_file" "$target_file" || {
-            echo -e "${RED}[!] Install failed. Exiting.${NC}"
+    # Download file using wget for better progress display
+    echo -e "${YELLOW}[*] Downloading $script_name...${NC}"
+    
+    # Prepare wget arguments
+    local wget_args=( --progress=bar:force:noscroll --show-progress --timeout=30 --tries=3 --retry-connrefused --waitretry=2 )
+    
+    # Add authentication header if available
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+      wget_args+=( --header="Authorization: token ${GITHUB_TOKEN}" )
+    fi
+    
+    if ! wget "${wget_args[@]}" "$raw_url" -O "$tmp_file"; then
+      echo -e "${RED}[!] Failed to download $script_name from $raw_url.${NC}"
+      rm -f "$tmp_file"
+      prompt_retry_or_exit "Download failed for $script_name" "This could indicate a network issue or server problem."
+      continue  # Continue the retry loop
+    fi
+    
+    # Basic sanity check for shell scripts
+    if [[ "$script_name" == *.sh ]] && ! sed -n '1p' "$tmp_file" | grep -qE '^#!.*/bin/(ba)?sh'; then
+      echo -e "${RED}[!] Downloaded $script_name missing valid shebang.${NC}"
+      rm -f "$tmp_file"
+      prompt_retry_or_exit "File validation failed for $script_name" "This could indicate a corrupted download or invalid file."
+      continue  # Continue the retry loop
+    fi
+    
+    # Git blob SHA verification (preferred)
+    if [ -n "$remote_sha" ] && command -v git >/dev/null 2>&1; then
+      local dl_blob="$(git hash-object "$tmp_file" 2>/dev/null || true)"
+      if [ -n "$dl_blob" ] && [ "$dl_blob" = "$remote_sha" ]; then
+        echo -e "${GREEN}[+] Download validated against GitHub API blob SHA.${NC}"
+        
+        # Install based on mode
+        if [ "$workspace_mode" = "true" ]; then
+          # Workspace-only installation
+          if safe_install_file "$tmp_file" "$target_file" "0755"; then
+            echo -e "${GREEN}[+] $script_name downloaded to $target_file (will be embedded into ISO).${NC}"
             rm -f "$tmp_file"
-            return 1
-          }
-        else
-          if ! safe_install_file "$tmp_file" "$target_file" "$orig_perms"; then
+            return 0
+          else
             rm -f "$tmp_file"
             return 1
           fi
-        fi
-        sync "$target_file" || true
-        echo -e "${GREEN}[+] Script updated from GitHub (verified). Please re-run $script_name.${NC}"
-        rm -f "$tmp_file"
-        
-        # Exit if this is a self-update
-        if [ "$exit_on_update" = "true" ]; then
-          exit 0
-        fi
-        return 0
-      fi
-    else
-      echo -e "${RED}[!] Download blob SHA mismatch (expected ${remote_sha:-<none>}). Rejecting.${NC}"
-      echo "    Downloaded: ${dl_blob:-<missing>}"
-      rm -f "$tmp_file"
-    fi
-  fi
-  
-  # Fallback: SHA256 verification
-  echo -e "${YELLOW}[*] Falling back to SHA256 verification...${NC}"
-  local remote_hash=$(sha256sum "$tmp_file" | cut -d' ' -f1)
-  local local_hash=$([ -f "$target_file" ] && sha256sum "$target_file" | cut -d' ' -f1 || echo "")
-  
-  if [ -z "$remote_hash" ]; then
-    echo -e "${RED}[!] Could not compute remote sha256. Rejecting download.${NC}"
-    rm -f "$tmp_file"
-    return 1
-  elif [ -z "$local_hash" ] || [ "$local_hash" != "$remote_hash" ]; then
-    if [ "$workspace_mode" = "true" ]; then
-      echo -e "${YELLOW}[*] sha256 differs or local missing; downloading $script_name for workspace...${NC}"
-      if safe_install_file "$tmp_file" "$target_file" "0755"; then
-        echo -e "${GREEN}[+] $script_name downloaded to $target_file (will be embedded into ISO).${NC}"
-        rm -f "$tmp_file"
-        return 0
-      else
-        rm -f "$tmp_file"
-        return 1
-      fi
-    else
-      echo -e "${YELLOW}[*] sha256 differs or local missing; updating $script_name...${NC}"
-      local orig_perms=$(stat -c %a "$target_file" 2>/dev/null || echo 0755)
-      chmod +x "$tmp_file" || true
-      if command -v install >/dev/null 2>&1; then
-        install -m "$orig_perms" "$tmp_file" "$target_file" || {
-          echo -e "${RED}[!] Install failed.${NC}"
+        else
+          # Host system installation with permission preservation
+          local orig_perms=$(stat -c %a "$target_file" 2>/dev/null || echo 0755)
+          chmod +x "$tmp_file" || true
+          if command -v install >/dev/null 2>&1; then
+            install -m "$orig_perms" "$tmp_file" "$target_file" || {
+              echo -e "${RED}[!] Install failed. Exiting.${NC}"
+              rm -f "$tmp_file"
+              return 1
+            }
+          else
+            if ! safe_install_file "$tmp_file" "$target_file" "$orig_perms"; then
+              rm -f "$tmp_file"
+              return 1
+            fi
+          fi
+          sync "$target_file" || true
+          echo -e "${GREEN}[+] Script updated from GitHub (verified). Please re-run $script_name.${NC}"
           rm -f "$tmp_file"
-          return 1
-        }
-      else
-        if ! safe_install_file "$tmp_file" "$target_file" "$orig_perms"; then
-          rm -f "$tmp_file"
-          return 1
+          
+          # Exit if this is a self-update
+          if [ "$exit_on_update" = "true" ]; then
+            exit 0
+          fi
+          return 0
         fi
+      else
+        echo -e "${RED}[!] Download blob SHA mismatch (expected ${remote_sha:-<none>}).${NC}"
+        echo "    Downloaded: ${dl_blob:-<missing>}"
+        rm -f "$tmp_file"
+        prompt_retry_or_exit "SHA verification failed for $script_name" "This could indicate a corrupted download or network issue."
+        continue  # Continue the retry loop
       fi
-      sync "$target_file" || true
-      echo -e "${GREEN}[+] $script_name updated.${NC}"
-      rm -f "$tmp_file"
-      
-      # Exit if this is a self-update
-      if [ "$exit_on_update" = "true" ]; then
-        exit 0
-      fi
-      return 0
     fi
-  else
-    echo -e "${GREEN}[+] Downloaded $script_name matches local sha256; no update needed.${NC}"
+    
+    # If we get here, Git blob SHA verification is not available
+    echo -e "${RED}[!] Git blob SHA verification unavailable for $script_name${NC}"
     rm -f "$tmp_file"
-    return 0
-  fi
+    prompt_retry_or_exit "Git blob SHA verification unavailable for $script_name" "This could indicate git is not installed or GitHub API issues."
+    continue  # Continue the retry loop
+  
+  done  # End of retry loop
 }
 
 # Resolve the path to this script (attempt a few strategies)
