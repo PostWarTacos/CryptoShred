@@ -23,8 +23,8 @@ NC='\033[0m' # No Color
 GITHUB_OWNER="PostWarTacos"
 GITHUB_REPO="CryptoShred"
 
-# Hardened curl options with progress display
-CURL_OPTS=( --fail --show-error --location --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 --progress-bar )
+# Hardened curl options - using silent for scripts, progress-bar shows percentage for small files
+CURL_OPTS=( --fail --silent --show-error --location --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 )
 
 # Allow token via environment to avoid rate limits / access private repos
 AUTH_HDR=()
@@ -180,8 +180,18 @@ _perform_download_and_validate() {
   
   local tmp_file="$(mktemp)" || { echo -e "${RED}[!] Failed to create temp file.${NC}"; return 1; }
   
-  # Download file
-  if ! curl "${CURL_OPTS[@]}" -o "$tmp_file" "$raw_url"; then
+  # Download file using wget for better progress display
+  echo -e "${YELLOW}[*] Downloading $script_name...${NC}"
+  
+  # Prepare wget arguments
+  local wget_args=( --progress=bar:force:noscroll --show-progress --timeout=30 --tries=3 --retry-connrefused --waitretry=2 )
+  
+  # Add authentication header if available
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    wget_args+=( --header="Authorization: token ${GITHUB_TOKEN}" )
+  fi
+  
+  if ! wget "${wget_args[@]}" "$raw_url" -O "$tmp_file"; then
     echo -e "${RED}[!] Failed to download $script_name from $raw_url.${NC}"
     rm -f "$tmp_file"
     return 1
@@ -708,8 +718,8 @@ echo -e "${YELLOW}[*] Found ISO: $ISO_URL${NC}"
 echo -e "${YELLOW}[*] Downloading $ISO_URL...${NC}"
 echo -e "${YELLOW}[*] This may take several minutes depending on your connection...${NC}"
 
-# Use curl with progress bar for consistency with other downloads
-if ! curl --fail --show-error --location --connect-timeout 10 --max-time 3600 --retry 3 --retry-delay 5 --progress-bar -o debian.iso "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/$ISO_URL"; then
+# Use wget with proper progress bar for large file downloads
+if ! wget --progress=bar:force:noscroll --show-progress --timeout=30 --tries=3 --retry-connrefused --waitretry=5 "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/$ISO_URL" -O debian.iso; then
   echo -e "${RED}[!] Error: Failed to download Debian ISO${NC}"
   echo -e "${RED}[!] Please check your internet connection and try again${NC}"
   exit 1
