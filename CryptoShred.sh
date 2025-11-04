@@ -52,7 +52,7 @@ prompt_read() {
 echo "================================================= CryptoShred ===================================================="
 echo
 echo -e "${GREEN}CryptoShred - Securely encrypt and destroy key${NC}"
-echo "Version 1.8 - 2025-10-29"
+echo "Version 1.8 - 2025-11-04"
 echo
 echo "This script will encrypt an entire local drive with a random key, making all data on it permanently inaccessible."
 echo "It supports both Opal hardware encryption (if available) and software LUKS2 encryption as a fallback."
