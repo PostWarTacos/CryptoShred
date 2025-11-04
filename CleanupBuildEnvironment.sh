@@ -11,11 +11,17 @@
 
 set -euo pipefail
 
+# Color definitions for installation messages
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # INITIAL SETUP AND CHECKS
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-clear
 echo "═══════════════════════════════════════════════════════════════════════════════════════"
 echo "Universal Build Environment Cleanup Script"
 echo "Version 2.0 - 2025-10-27"
@@ -28,7 +34,7 @@ echo
 
 # Check for root permissions
 if [ "$EUID" -ne 0 ]; then
-  echo "[!] Please run this script as root (sudo)."
+  echo -e "${RED}[!] Please run this script as root (sudo).${NC}"
   echo "    Example: sudo bash CleanupCryptoShred.sh"
   exit 1
 fi
@@ -54,7 +60,7 @@ COMMON_BUILD_DIRS=(
 )
 
 # Auto-detect additional build directories
-echo "[*] Auto-detecting build directories..."
+echo -e "${YELLOW}[*] Auto-detecting build directories...${NC}"
 DETECTED_DIRS=()
 
 # Look for directories with common build patterns
@@ -89,14 +95,14 @@ for dir in "${COMMON_BUILD_DIRS[@]}" "${DETECTED_DIRS[@]}"; do
   fi
 done
 
-echo "[INFO] Real user home: $REAL_HOME"
+echo -e "${BLUE}[INFO] Real user home: $REAL_HOME${NC}"
 if [ ${#ALL_WORK_DIRS[@]} -gt 0 ]; then
-  echo "[INFO] Found build directories:"
+  echo -e "${BLUE}Found build directories:${NC}"
   for dir in "${ALL_WORK_DIRS[@]}"; do
     echo "       - $dir"
   done
 else
-  echo "[INFO] No build directories found"
+  echo -e "${BLUE}No build directories found${NC}"
 fi
 echo
 
@@ -104,7 +110,7 @@ echo
 # PROCESS CLEANUP
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-echo "[*] Checking for processes using build directories..."
+echo -e "${YELLOW}[*] Checking for processes using build directories...${NC}"
 
 # Function to clean up processes for a directory
 cleanup_processes_for_dir() {
@@ -119,15 +125,15 @@ cleanup_processes_for_dir() {
   PROCESSES=$(fuser -v "$workdir" 2>/dev/null | awk 'NR>1 {print $2}' | sort -u || true)
   
   if [ -n "$PROCESSES" ] && [ "$PROCESSES" != "" ]; then
-    echo "[*] Found processes using $dir_name ($workdir):"
+    echo -e "${YELLOW}[*] Found processes using $dir_name ($workdir):${NC}"
     fuser -v "$workdir" 2>/dev/null || true
     echo
-    echo "[*] Terminating processes for $dir_name..."
-    
+    echo -e "${YELLOW}[*] Terminating processes for $dir_name...${NC}"
+
     # First try graceful termination
     for pid in $PROCESSES; do
       if [ -n "$pid" ] && [ "$pid" -gt 1 ]; then
-        echo "    Sending TERM signal to PID $pid..."
+        echo -e "${YELLOW}    Sending TERM signal to PID $pid...${NC}"
         kill -TERM "$pid" 2>/dev/null || true
       fi
     done
@@ -138,17 +144,17 @@ cleanup_processes_for_dir() {
     # Force kill any remaining processes
     REMAINING=$(fuser -v "$workdir" 2>/dev/null | awk 'NR>1 {print $2}' | sort -u || true)
     if [ -n "$REMAINING" ] && [ "$REMAINING" != "" ]; then
-      echo "[*] Force killing remaining processes for $dir_name..."
+      echo -e "${YELLOW}[*] Force killing remaining processes for $dir_name...${NC}"
       for pid in $REMAINING; do
         if [ -n "$pid" ] && [ "$pid" -gt 1 ]; then
-          echo "    Sending KILL signal to PID $pid..."
+          echo -e "${YELLOW}    Sending KILL signal to PID $pid...${NC}"
           kill -KILL "$pid" 2>/dev/null || true
         fi
       done
       sleep 2
     fi
   else
-    echo "[+] No processes found using $dir_name"
+    echo -e "${GREEN}[+] No processes found using $dir_name${NC}"
   fi
 }
 
@@ -158,7 +164,7 @@ if [ ${#ALL_WORK_DIRS[@]} -gt 0 ]; then
     cleanup_processes_for_dir "$workdir"
   done
 else
-  echo "[+] No build directories to check for processes"
+  echo -e "${GREEN}[+] No build directories to check for processes${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -166,7 +172,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Cleaning up mount points..."
+echo -e "${YELLOW}[*] Cleaning up mount points...${NC}"
 
 # Function to safely unmount with multiple attempts
 safe_unmount() {
@@ -174,31 +180,31 @@ safe_unmount() {
   local description="$2"
   
   if mountpoint -q "$mount_point" 2>/dev/null; then
-    echo "    Unmounting $description ($mount_point)..."
-    
+    echo -e "${YELLOW}    Unmounting $description ($mount_point)...${NC}"
+
     # Try lazy unmount first (most reliable for stuck mounts)
     if umount -l "$mount_point" 2>/dev/null; then
-      echo "    ✓ Successfully unmounted $description (lazy)"
+      echo -e "${GREEN}    ✓ Successfully unmounted $description (lazy)${NC}"
       return 0
     fi
     
     # Try force unmount
     if umount -f "$mount_point" 2>/dev/null; then
-      echo "    ✓ Successfully unmounted $description (force)"
+      echo -e "${GREEN}    ✓ Successfully unmounted $description (force)${NC}"
       return 0
     fi
     
     # Try regular unmount
     if umount "$mount_point" 2>/dev/null; then
-      echo "    ✓ Successfully unmounted $description (regular)"
+      echo -e "${GREEN}    ✓ Successfully unmounted $description (regular)${NC}"
       return 0
     fi
     
     # If all else fails, report the issue but continue
-    echo "    ⚠ Failed to unmount $description - may need manual intervention"
+    echo -e "${YELLOW}    ⚠ Failed to unmount $description - may need manual intervention${NC}"
     return 1
   else
-    echo "    ✓ $description not mounted"
+    echo -e "${GREEN}    ✓ $description not mounted${NC}"
     return 0
   fi
 }
@@ -209,7 +215,7 @@ cleanup_mounts_for_dir() {
   local dir_name=$(basename "$workdir")
   
   if [ ! -d "$workdir" ]; then
-    echo "[+] $dir_name directory does not exist, skipping mount cleanup"
+    echo -e "${GREEN}[+] $dir_name directory does not exist, skipping mount cleanup${NC}"
     return 0
   fi
   
@@ -232,7 +238,7 @@ cleanup_mounts_for_dir() {
     MOUNT_POINTS=$(mount | grep "$found_chroot" | awk '{print $3}' | sort -r || true)
     
     if [ -n "$MOUNT_POINTS" ]; then
-      echo "[*] Found mounted filesystems in $dir_name:"
+      echo -e "${YELLOW}[*] Found mounted filesystems in $dir_name:${NC}"
       mount | grep "$found_chroot" || true
       echo
       
@@ -262,21 +268,21 @@ cleanup_mounts_for_dir() {
         esac
       done
     else
-      echo "[+] No mounted filesystems found in $dir_name"
+      echo -e "${GREEN}[+] No mounted filesystems found in $dir_name${NC}"
     fi
   else
-    echo "[+] No chroot directory found in $dir_name, skipping chroot mount cleanup"
+    echo -e "${GREEN}[+] No chroot directory found in $dir_name, skipping chroot mount cleanup${NC}"
   fi
   
   # Double-check with a more aggressive approach for any remaining mounts
-  echo "[*] Performing final mount cleanup for $dir_name..."
-  
+  echo -e "${YELLOW}[*] Performing final mount cleanup for $dir_name...${NC}"
+
   # Try to unmount any remaining mounts under this workdir
   REMAINING_MOUNTS=$(mount | grep "$workdir" | awk '{print $3}' | sort -r || true)
   if [ -n "$REMAINING_MOUNTS" ]; then
-    echo "[*] Found remaining mounts in $dir_name, attempting cleanup..."
+    echo -e "${YELLOW}[*] Found remaining mounts in $dir_name, attempting cleanup...${NC}"
     for mount_point in $REMAINING_MOUNTS; do
-      echo "    Force unmounting $mount_point..."
+      echo -e "${YELLOW}    Force unmounting $mount_point...${NC}"
       umount -lf "$mount_point" 2>/dev/null || true
     done
   fi
@@ -288,7 +294,7 @@ if [ ${#ALL_WORK_DIRS[@]} -gt 0 ]; then
     cleanup_mounts_for_dir "$workdir"
   done
 else
-  echo "[+] No build directories to clean up mounts for"
+  echo -e "${GREEN}[+] No build directories to clean up mounts for${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -296,7 +302,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Cleaning up loop devices..."
+echo -e "${YELLOW}[*] Cleaning up loop devices...${NC}"
 
 # Function to find loop devices associated with a directory
 find_loop_devices_for_dir() {
@@ -322,24 +328,24 @@ fi
 if [ ${#ALL_LOOP_DEVICES[@]} -gt 0 ]; then
   echo "[*] Found loop devices associated with build workspaces:"
   for loop_dev in "${ALL_LOOP_DEVICES[@]}"; do
-    echo "       $loop_dev"
+    echo -e "${YELLOW}       $loop_dev${NC}"
   done
   echo
   
   for loop_dev in "${ALL_LOOP_DEVICES[@]}"; do
-    echo "    Detaching $loop_dev..."
+    echo -e "${YELLOW}    Detaching $loop_dev...${NC}"
     losetup -d "$loop_dev" 2>/dev/null || true
   done
 else
-  echo "[+] No loop devices found associated with build workspaces"
+  echo -e "${GREEN}[+] No loop devices found associated with build workspaces${NC}"
 fi
 
 # Also check for any orphaned loop devices from ISO files
-echo "[*] Checking for orphaned loop devices..."
+echo -e "${YELLOW}[*] Checking for orphaned loop devices...${NC}"
 ORPHANED_LOOPS=$(losetup -l 2>/dev/null | grep -E "\.(iso|img)$" | awk '{print $1}' || true)
 
 if [ -n "$ORPHANED_LOOPS" ]; then
-  echo "[*] Found potentially orphaned loop devices:"
+  echo -e "${YELLOW}[*] Found potentially orphaned loop devices:${NC}"
   losetup -l | grep -E "\.(iso|img)$" || true
   echo
   read -p "Detach these loop devices? (y/N): " DETACH_ORPHANED
@@ -347,15 +353,15 @@ if [ -n "$ORPHANED_LOOPS" ]; then
   if [[ "$DETACH_ORPHANED" =~ ^[Yy]$ ]]; then
     while IFS= read -r loop_dev; do
       if [ -n "$loop_dev" ]; then
-        echo "    Detaching $loop_dev..."
+        echo -e "${YELLOW}    Detaching $loop_dev...${NC}"
         losetup -d "$loop_dev" 2>/dev/null || true
       fi
     done <<< "$ORPHANED_LOOPS"
   else
-    echo "    Skipping orphaned loop device cleanup"
+    echo -e "${GREEN}    Skipping orphaned loop device cleanup${NC}"
   fi
 else
-  echo "[+] No orphaned loop devices found"
+  echo -e "${GREEN}[+] No orphaned loop devices found${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -363,7 +369,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Removing build directories..."
+echo -e "${YELLOW}[*] Removing build directories...${NC}"
 
 # Function to safely remove a directory
 safe_remove_directory() {
@@ -371,43 +377,43 @@ safe_remove_directory() {
   local dir_name=$(basename "$workdir")
   
   if [ -d "$workdir" ]; then
-    echo "    Build directory $dir_name exists, attempting removal..."
-    
+    echo -e "${YELLOW}    Build directory $dir_name exists, attempting removal...${NC}"
+
     # First attempt: regular removal
     if rm -rf "$workdir" 2>/dev/null; then
-      echo "    ✓ Build directory $dir_name removed successfully"
+      echo -e "${GREEN}    ✓ Build directory $dir_name removed successfully${NC}"
       return 0
     else
-      echo "    Regular removal failed for $dir_name, trying alternative methods..."
-      
+      echo -e "${YELLOW}    Regular removal failed for $dir_name, trying alternative methods...${NC}"
+
       # Second attempt: change permissions and try again
-      echo "    Changing permissions for $dir_name and retrying..."
+      echo -e "${YELLOW}    Changing permissions for $dir_name and retrying...${NC}"
       chmod -R 777 "$workdir" 2>/dev/null || true
       if rm -rf "$workdir" 2>/dev/null; then
-        echo "    ✓ Build directory $dir_name removed after permission change"
+        echo -e "${GREEN}    ✓ Build directory $dir_name removed after permission change${NC}"
         return 0
       else
         # Third attempt: Remove contents first, then directory
-        echo "    Removing contents individually for $dir_name..."
+        echo -e "${YELLOW}    Removing contents individually for $dir_name...${NC}"
         find "$workdir" -type f -delete 2>/dev/null || true
         find "$workdir" -depth -type d -exec rmdir {} \; 2>/dev/null || true
         
         if [ ! -d "$workdir" ]; then
-          echo "    ✓ Build directory $dir_name removed after individual cleanup"
+          echo -e "${GREEN}    ✓ Build directory $dir_name removed after individual cleanup${NC}"
           return 0
         else
-          echo "    ⚠ Some files/directories may remain in $workdir"
-          echo "    You may need to manually remove them or reboot"
-          
+          echo -e "${YELLOW}    ⚠ Some files/directories may remain in $workdir${NC}"
+          echo -e "${YELLOW}    You may need to manually remove them or reboot${NC}"
+
           # Show what's left
-          echo "    Remaining items in $dir_name:"
+          echo -e "${YELLOW}    Remaining items in $dir_name:${NC}"
           ls -la "$workdir" 2>/dev/null || true
           return 1
         fi
       fi
     fi
   else
-    echo "    ✓ Build directory $dir_name does not exist"
+    echo -e "${GREEN}    ✓ Build directory $dir_name does not exist${NC}"
     return 0
   fi
 }
@@ -421,7 +427,7 @@ if [ ${#ALL_WORK_DIRS[@]} -gt 0 ]; then
     fi
   done
 else
-  echo "[+] No build directories to remove"
+  echo -e "${GREEN}[+] No build directories to remove${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -429,22 +435,22 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Performing system cleanup..."
+echo -e "${YELLOW}[*] Performing system cleanup...${NC}"
 
 # Clear any cached filesystem information
-echo "    Clearing filesystem caches..."
+echo -e "${YELLOW}    Clearing filesystem caches...${NC}"
 sync
 echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 
 # Trigger udev to rescan devices
-echo "    Triggering udev rescan..."
+echo -e "${YELLOW}    Triggering udev rescan...${NC}"
 udevadm control --reload 2>/dev/null || true
 udevadm trigger 2>/dev/null || true
 udevadm settle 2>/dev/null || true
 
 # Update the locate database if updatedb is available
 if command -v updatedb >/dev/null 2>&1; then
-  echo "    Updating locate database..."
+  echo -e "${YELLOW}    Updating locate database...${NC}"
   updatedb 2>/dev/null || true
 fi
 
@@ -453,7 +459,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "[*] Verification..."
+echo -e "${YELLOW}[*] Verification...${NC}"
 
 # Check if cleanup was successful
 CLEANUP_SUCCESS=true
@@ -470,7 +476,7 @@ if [ ${#ALL_WORK_DIRS[@]} -gt 0 ]; then
 fi
 
 if [ -n "$REMAINING_MOUNTS" ] && [ "$REMAINING_MOUNTS" != $'\n' ]; then
-  echo "    ⚠ Warning: Some mounts may still exist:"
+  echo -e "${RED}    ⚠ Warning: Some mounts may still exist:${NC}"
   echo "$REMAINING_MOUNTS"
   CLEANUP_SUCCESS=false
 fi
@@ -486,9 +492,9 @@ if [ ${#ALL_WORK_DIRS[@]} -gt 0 ]; then
 fi
 
 if [ ${#REMAINING_DIRS[@]} -gt 0 ]; then
-  echo "    ⚠ Warning: Some build directories still exist:"
+  echo -e "${RED}    ⚠ Warning: Some build directories still exist:${NC}"
   for dir in "${REMAINING_DIRS[@]}"; do
-    echo "       - $dir"
+    echo -e "${RED}       - $dir${NC}"
   done
   CLEANUP_SUCCESS=false
 fi
@@ -507,7 +513,7 @@ if [ ${#ALL_WORK_DIRS[@]} -gt 0 ]; then
 fi
 
 if [ -n "$PROCESSES_REMAINING" ] && [ "$PROCESSES_REMAINING" != " " ]; then
-  echo "    ⚠ Warning: Some processes may still be using build directories"
+  echo -e "${RED}    ⚠ Warning: Some processes may still be using build directories${NC}"
   CLEANUP_SUCCESS=false
 fi
 
@@ -519,7 +525,7 @@ fi
 echo
 if [ "$CLEANUP_SUCCESS" = true ]; then
   echo "════════════════════════════════════════════════════════════════════════════════════════"
-  echo "✓ CLEANUP COMPLETED SUCCESSFULLY"
+  echo -e "${GREEN}✓ CLEANUP COMPLETED SUCCESSFULLY${NC}"
   echo "════════════════════════════════════════════════════════════════════════════════════════"
   echo
   echo "The build environment has been cleaned up. You should now be able to run"
@@ -532,7 +538,7 @@ if [ "$CLEANUP_SUCCESS" = true ]; then
   echo "  3. As a last resort, reboot the system"
 else
   echo "════════════════════════════════════════════════════════════════════════════════════════"
-  echo "⚠ CLEANUP COMPLETED WITH WARNINGS"
+  echo -e "${RED}⚠ CLEANUP COMPLETED WITH WARNINGS${NC}"
   echo "════════════════════════════════════════════════════════════════════════════════════════"
   echo
   echo "Some issues were encountered during cleanup. You may need to:"

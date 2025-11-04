@@ -19,6 +19,77 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# GitHub repository configuration
+GITHUB_OWNER="PostWarTacos"
+GITHUB_REPO="CryptoShred"
+
+# Hardened curl options - using silent for scripts, progress-bar shows percentage for small files
+CURL_OPTS=( --fail --silent --show-error --location --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 )
+
+# Allow token via environment to avoid rate limits / access private repos
+AUTH_HDR=()
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  AUTH_HDR=( -H "Authorization: token ${GITHUB_TOKEN}" )
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# INTRODUCTION AND USER CONFIRMATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+echo
+echo "================================================== CryptoShred ISO Builder =================================================="
+echo
+echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
+echo "Version 2.1 - 2025-11-04"
+echo
+echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
+echo "The resulting ISO will be written directly to the specified USB device."
+echo "Make sure to change the USB device and script are in place before proceeding."
+echo
+echo -e "${RED}WARNING: This will ERASE ALL DATA on the specified USB device.${NC}"
+echo -e "${RED}IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in.${NC}"
+echo
+echo "============================================================================================================================="
+echo
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# BRANCH SELECTION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+echo -e "${YELLOW}Select which branch to use for CryptoShred scripts:${NC}"
+echo "  1) Main branch (stable, default)"
+echo "  2) Develop branch (latest features)"
+echo "  3) Custom branch"
+echo
+read -p "Select option (1-3) [default: 1]: " BRANCH_CHOICE
+
+case "${BRANCH_CHOICE:-1}" in
+  1|"")
+    REF="main"
+    echo -e "${GREEN}[+] Using main branch (stable)${NC}"
+    ;;
+  2)
+    REF="develop" 
+    echo -e "${GREEN}[+] Using develop branch (latest features)${NC}"
+    ;;
+  3)
+    read -p "Enter custom branch name: " CUSTOM_BRANCH
+    if [[ -n "$CUSTOM_BRANCH" ]]; then
+      REF="$CUSTOM_BRANCH"
+      echo -e "${GREEN}[+] Using custom branch: $REF${NC}"
+    else
+      echo -e "${YELLOW}[!] No branch name provided, defaulting to main${NC}"
+      REF="main"
+    fi
+    ;;
+  *)
+    echo -e "${YELLOW}[!] Invalid option, defaulting to main branch${NC}"
+    REF="main"
+    ;;
+esac
+
+read -p "Press Enter to continue..."
+
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # FUNCTION DEFINITIONS
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -26,7 +97,8 @@ NC='\033[0m' # No Color
 # Function to get remote blob SHA from GitHub API
 get_remote_blob_sha() {
   # arg1 = api url
-  curl "${CURL_OPTS[@]}" "${AUTH_HDR[@]}" -H "Accept: application/vnd.github.v3+json" "$1" 2>/dev/null \
+  # Use silent mode for API calls (small JSON responses don't need progress bars)
+  curl --fail --silent --show-error --location --connect-timeout 10 --max-time 30 --retry 2 "${AUTH_HDR[@]}" -H "Accept: application/vnd.github.v3+json" "$1" 2>/dev/null \
     | sed -n 's/.*"sha": *"\([^"]*\)".*/\1/p' || true
 }
 
@@ -44,11 +116,38 @@ safe_install_file() {
   return 0
 }
 
-# Download and validate function with Git blob SHA verification
-# Usage: download_and_validate "api_url" "raw_url" "target_file" "workspace_mode" ["exit_on_update"]
+# Helper function to prompt user for retry or exit
+# Usage: prompt_retry_or_exit "error_message" "cause_description"
+# Returns: never returns - either continues loop or exits script
+prompt_retry_or_exit() {
+  local error_msg="$1"
+  local cause_desc="$2"
+  
+  echo -e "${RED}[!] $error_msg${NC}"
+  echo -e "${YELLOW}$cause_desc${NC}"
+  echo
+  printf "%b" "${YELLOW}Choose an option:${NC}"
+  echo "  1) Retry download"
+  echo "  2) Exit script"
+  echo
+  read -p "Enter choice (1-2): " RETRY_CHOICE
+  case "${RETRY_CHOICE:-2}" in
+    1)
+      echo -e "${YELLOW}[*] Retrying download...${NC}"
+      return 0  # Signal to continue retry loop
+      ;;
+    *)
+      echo -e "${RED}[!] Exiting due to error.${NC}"
+      exit 1
+      ;;
+  esac
+}
+
+# Download and validate function with Git blob SHA verification (only downloads if updated)
+# Usage: download_if_updated "api_url" "raw_url" "target_file" "workspace_mode" ["exit_on_update"]
 # workspace_mode: "true" for workspace-only install, "false" for host system install
 # exit_on_update: "true" to exit script after successful update (for self-update)
-download_and_validate() {
+download_if_updated() {
   local api_url="$1"
   local raw_url="$2" 
   local target_file="$3"
@@ -64,7 +163,7 @@ download_and_validate() {
   if command -v git >/dev/null 2>&1 && [ -f "$target_file" ]; then
     local_blob=$(git hash-object "$target_file" 2>/dev/null || true)
   fi
-  
+
   # Check if up to date
   if [ -n "$remote_sha" ] && [ -n "$local_blob" ] && [ "$remote_sha" = "$local_blob" ]; then
     echo -e "${GREEN}[+] Local $script_name is up to date (git blob sha match).${NC}"
@@ -72,123 +171,127 @@ download_and_validate() {
   fi
 
   echo -e "${YELLOW}[*] Remote $script_name differs or verification unavailable; downloading now...${NC}"
-  local tmp_file="$(mktemp)" || { echo -e "${RED}[!] Failed to create temp file.${NC}"; return 1; }
+  _perform_download_and_validate "$api_url" "$raw_url" "$target_file" "$workspace_mode" "$exit_on_update" "$remote_sha"
+}
+
+# Always download and validate function (skips hash check, always downloads but still verifies)
+# Usage: download_always "api_url" "raw_url" "target_file" "workspace_mode" ["exit_on_update"]
+# workspace_mode: "true" for workspace-only install, "false" for host system install  
+# exit_on_update: "true" to exit script after successful update
+download_always() {
+  local api_url="$1"
+  local raw_url="$2"
+  local target_file="$3" 
+  local workspace_mode="${4:-false}"
+  local exit_on_update="${5:-false}"
+  local script_name="$(basename "$target_file")"
   
-  # Download file
-  if ! curl "${CURL_OPTS[@]}" -o "$tmp_file" "$raw_url"; then
-    echo -e "${RED}[!] Failed to download $script_name from $raw_url.${NC}"
-    rm -f "$tmp_file"
-    return 1
-  fi
+  # Get remote SHA for verification
+  local remote_sha="$(get_remote_blob_sha "$api_url")"
   
-  # Basic sanity check for shell scripts
-  if [[ "$script_name" == *.sh ]] && ! sed -n '1p' "$tmp_file" | grep -qE '^#!.*/bin/(ba)?sh'; then
-    echo -e "${RED}[!] Downloaded $script_name missing valid shebang. Rejecting.${NC}"
-    rm -f "$tmp_file"
-    return 1
-  fi
+  _perform_download_and_validate "$api_url" "$raw_url" "$target_file" "$workspace_mode" "$exit_on_update" "$remote_sha"
+}
+
+# Internal function to perform the actual download and validation logic
+# Used by both download_if_updated and download_always to avoid code duplication
+_perform_download_and_validate() {
+  local api_url="$1"
+  local raw_url="$2"
+  local target_file="$3"
+  local workspace_mode="$4"
+  local exit_on_update="$5"
+  local remote_sha="$6"
+  local script_name="$(basename "$target_file")"
   
-  # Git blob SHA verification (preferred)
-  if [ -n "$remote_sha" ] && command -v git >/dev/null 2>&1; then
-    local dl_blob="$(git hash-object "$tmp_file" 2>/dev/null || true)"
-    if [ -n "$dl_blob" ] && [ "$dl_blob" = "$remote_sha" ]; then
-      echo -e "${GREEN}[+] Download validated against GitHub API blob SHA.${NC}"
-      
-      # Install based on mode
-      if [ "$workspace_mode" = "true" ]; then
-        # Workspace-only installation
-        if safe_install_file "$tmp_file" "$target_file" "0755"; then
-          echo -e "${GREEN}[+] $script_name downloaded to $target_file (will be embedded into ISO).${NC}"
-          rm -f "$tmp_file"
-          return 0
-        else
-          rm -f "$tmp_file"
-          return 1
-        fi
-      else
-        # Host system installation with permission preservation
-        local orig_perms=$(stat -c %a "$target_file" 2>/dev/null || echo 0755)
-        chmod +x "$tmp_file" || true
-        if command -v install >/dev/null 2>&1; then
-          install -m "$orig_perms" "$tmp_file" "$target_file" || {
-            echo -e "${RED}[!] Install failed. Exiting.${NC}"
+  # Retry loop for download and validation
+  while true; do
+    local tmp_file="$(mktemp)" || { echo -e "${RED}[!] Failed to create temp file.${NC}"; exit 1; }
+  
+    # Download file using wget for better progress display
+    echo -e "${YELLOW}[*] Downloading $script_name...${NC}"
+    
+    # Prepare wget arguments
+    local wget_args=( --progress=bar:force:noscroll --show-progress --timeout=30 --tries=3 --retry-connrefused --waitretry=2 )
+    
+    # Add authentication header if available
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+      wget_args+=( --header="Authorization: token ${GITHUB_TOKEN}" )
+    fi
+    
+    if ! wget "${wget_args[@]}" "$raw_url" -O "$tmp_file"; then
+      echo -e "${RED}[!] Failed to download $script_name from $raw_url.${NC}"
+      rm -f "$tmp_file"
+      prompt_retry_or_exit "Download failed for $script_name" "This could indicate a network issue or server problem."
+      continue  # Continue the retry loop
+    fi
+    
+    # Basic sanity check for shell scripts
+    if [[ "$script_name" == *.sh ]] && ! sed -n '1p' "$tmp_file" | grep -qE '^#!.*/bin/(ba)?sh'; then
+      echo -e "${RED}[!] Downloaded $script_name missing valid shebang.${NC}"
+      rm -f "$tmp_file"
+      prompt_retry_or_exit "File validation failed for $script_name" "This could indicate a corrupted download or invalid file."
+      continue  # Continue the retry loop
+    fi
+    
+    # Git blob SHA verification (preferred)
+    if [ -n "$remote_sha" ] && command -v git >/dev/null 2>&1; then
+      local dl_blob="$(git hash-object "$tmp_file" 2>/dev/null || true)"
+      if [ -n "$dl_blob" ] && [ "$dl_blob" = "$remote_sha" ]; then
+        echo -e "${GREEN}[+] Download validated against GitHub API blob SHA.${NC}"
+        
+        # Install based on mode
+        if [ "$workspace_mode" = "true" ]; then
+          # Workspace-only installation
+          if safe_install_file "$tmp_file" "$target_file" "0755"; then
+            echo -e "${GREEN}[+] $script_name downloaded to $target_file (will be embedded into ISO).${NC}"
             rm -f "$tmp_file"
-            return 1
-          }
-        else
-          if ! safe_install_file "$tmp_file" "$target_file" "$orig_perms"; then
+            return 0
+          else
             rm -f "$tmp_file"
             return 1
           fi
-        fi
-        sync "$target_file" || true
-        echo -e "${GREEN}[+] Script updated from GitHub (verified). Please re-run $script_name.${NC}"
-        rm -f "$tmp_file"
-        
-        # Exit if this is a self-update
-        if [ "$exit_on_update" = "true" ]; then
-          exit 0
-        fi
-        return 0
-      fi
-    else
-      echo -e "${RED}[!] Download blob SHA mismatch (expected ${remote_sha:-<none>}). Rejecting.${NC}"
-      echo "    Downloaded: ${dl_blob:-<missing>}"
-      rm -f "$tmp_file"
-    fi
-  fi
-  
-  # Fallback: SHA256 verification
-  echo -e "${YELLOW}[*] Falling back to SHA256 verification...${NC}"
-  local remote_hash=$(sha256sum "$tmp_file" | cut -d' ' -f1)
-  local local_hash=$([ -f "$target_file" ] && sha256sum "$target_file" | cut -d' ' -f1 || echo "")
-  
-  if [ -z "$remote_hash" ]; then
-    echo -e "${RED}[!] Could not compute remote sha256. Rejecting download.${NC}"
-    rm -f "$tmp_file"
-    return 1
-  elif [ -z "$local_hash" ] || [ "$local_hash" != "$remote_hash" ]; then
-    if [ "$workspace_mode" = "true" ]; then
-      echo -e "${YELLOW}[*] sha256 differs or local missing; downloading $script_name for workspace...${NC}"
-      if safe_install_file "$tmp_file" "$target_file" "0755"; then
-        echo -e "${GREEN}[+] $script_name downloaded to $target_file (will be embedded into ISO).${NC}"
-        rm -f "$tmp_file"
-        return 0
-      else
-        rm -f "$tmp_file"
-        return 1
-      fi
-    else
-      echo -e "${YELLOW}[*] sha256 differs or local missing; updating $script_name...${NC}"
-      local orig_perms=$(stat -c %a "$target_file" 2>/dev/null || echo 0755)
-      chmod +x "$tmp_file" || true
-      if command -v install >/dev/null 2>&1; then
-        install -m "$orig_perms" "$tmp_file" "$target_file" || {
-          echo -e "${RED}[!] Install failed.${NC}"
+        else
+          # Host system installation with permission preservation
+          local orig_perms=$(stat -c %a "$target_file" 2>/dev/null || echo 0755)
+          chmod +x "$tmp_file" || true
+          if command -v install >/dev/null 2>&1; then
+            install -m "$orig_perms" "$tmp_file" "$target_file" || {
+              echo -e "${RED}[!] Install failed. Exiting.${NC}"
+              rm -f "$tmp_file"
+              return 1
+            }
+          else
+            if ! safe_install_file "$tmp_file" "$target_file" "$orig_perms"; then
+              rm -f "$tmp_file"
+              return 1
+            fi
+          fi
+          sync "$target_file" || true
+          echo -e "${GREEN}[+] Script updated from GitHub (verified). Please re-run $script_name.${NC}"
           rm -f "$tmp_file"
-          return 1
-        }
-      else
-        if ! safe_install_file "$tmp_file" "$target_file" "$orig_perms"; then
-          rm -f "$tmp_file"
-          return 1
+          
+          # Exit if this is a self-update
+          if [ "$exit_on_update" = "true" ]; then
+            exit 0
+          fi
+          return 0
         fi
+      else
+        echo -e "${RED}[!] Download blob SHA mismatch (expected ${remote_sha:-<none>}).${NC}"
+        echo "    Downloaded: ${dl_blob:-<missing>}"
+        rm -f "$tmp_file"
+        prompt_retry_or_exit "SHA verification failed for $script_name" "This could indicate a corrupted download or network issue."
+        continue  # Continue the retry loop
       fi
-      sync "$target_file" || true
-      echo -e "${GREEN}[+] $script_name updated.${NC}"
-      rm -f "$tmp_file"
-      
-      # Exit if this is a self-update
-      if [ "$exit_on_update" = "true" ]; then
-        exit 0
-      fi
-      return 0
     fi
-  else
-    echo -e "${GREEN}[+] Downloaded $script_name matches local sha256; no update needed.${NC}"
+    
+    # If we get here, Git blob SHA verification is not available
+    echo -e "${RED}[!] Git blob SHA verification unavailable for $script_name${NC}"
     rm -f "$tmp_file"
-    return 0
-  fi
+    prompt_retry_or_exit "Git blob SHA verification unavailable for $script_name" "This could indicate git is not installed or GitHub API issues."
+    continue  # Continue the retry loop
+  
+  done  # End of retry loop
 }
 
 # Resolve the path to this script (attempt a few strategies)
@@ -239,32 +342,74 @@ if [ -z "${BASH_VERSION:-}" ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-# DEBUGGING AND LOGGING SETUP (DISABLED)
+# COMMAND LINE ARGUMENT HANDLING
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-# Debugging output
-# Create a logfile to capture the full run for debugging (timestamped)
-# LOGDIR="/var/log/cryptoshred"
-# mkdir -p "$LOGDIR"
-# LOGFILE="$LOGDIR/build-$(date +%Y%m%d-%H%M%S).log"
-# Redirect stdout/stderr to logfile while still allowing console output when interactive
-# exec > >(tee -a "$LOGFILE") 2>&1
+# Handle version checking arguments
+case "${1:-}" in
+  --version-check|--check-version)
+    branch="${2:-main}"
+    echo -e "${BLUE}[*] Checking BuildCryptoShred.sh against $branch branch using hash comparison...${NC}"
+    
+    # Use existing hash-based checking functions
+    build_api_url="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/BuildCryptoShred.sh?ref=${branch}"
+    build_raw_url="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${branch}/BuildCryptoShred.sh"
+    
+    # Get script path
+    script_path="$(resolve_self_path)"
+    if [ -z "$script_path" ] || [ ! -f "$script_path" ]; then
+      script_path="$0"
+    fi
+    
+    # Use the existing download_if_updated function in check-only mode
+    echo -e "${YELLOW}[*] Comparing local and remote hashes...${NC}"
+    
+    # Get remote and local blob SHAs using existing function
+    remote_sha="$(get_remote_blob_sha "$build_api_url")"
+    local_blob=""
+    if command -v git >/dev/null 2>&1 && [ -f "$script_path" ]; then
+      local_blob=$(git hash-object "$script_path" 2>/dev/null || true)
+    fi
 
-# echo
-# echo "[LOGFILE] $LOGFILE"
-# echo "[INFO] Invoked by: $(whoami) (SUDO_USER=${SUDO_USER:-undefined})"
-# echo "[INFO] Shell: $SHELL" 
-# echo "[INFO] PATH: $PATH"
-# echo "[INFO] HOME: $HOME" 
-# echo "[INFO] Real home inferred: ${REAL_HOME:-unset}"
-# echo "[INFO] Environment dump:" 
-# env | sort
-
-# Enable tracing after logfile is ready if requested by DEBUG or by honoring
-# an inherited -x (set HONOR_SHELL_XTRACE=1 to enable in that case).
-# if [ "${DEBUG:-0}" -ne 0 ] || { [ "${HONOR_SHELL_XTRACE:-0}" -ne 0 ] && [ "$INHERITED_XTRACE" -eq 1 ]; }; then
-#   set -x
-# fi
+    # Compare hashes
+    if [ -n "$remote_sha" ] && [ -n "$local_blob" ]; then
+      echo -e "${BLUE}[*] Local hash:  $local_blob${NC}"
+      echo -e "${BLUE}[*] Remote hash: $remote_sha${NC}"
+      
+      if [ "$remote_sha" = "$local_blob" ]; then
+        echo -e "${GREEN}[✓] Hashes match - BuildCryptoShred.sh is up to date with $branch branch${NC}"
+      else
+        echo -e "${YELLOW}[!] Hash mismatch - BuildCryptoShred.sh differs from $branch branch${NC}"
+      fi
+    else
+      echo -e "${YELLOW}[!] Could not determine hashes for comparison${NC}"
+      echo -e "${YELLOW}    Local hash: ${local_blob:-<missing>}${NC}"
+      echo -e "${YELLOW}    Remote hash: ${remote_sha:-<missing>}${NC}"
+    fi
+    exit 0
+    ;;
+  --help|-h)
+    echo "BuildCryptoShred - Create a bootable Debian-based ISO with CryptoShred pre-installed"
+    echo
+    echo "Usage: $0 [OPTIONS]"
+    echo
+    echo "Options:"
+    echo "  --version-check [branch]       Check BuildCryptoShred.sh version against branch (default: main)"
+    echo "  --help, -h                     Show this help message"
+    echo
+    echo "Examples:"
+    echo "  $0                             Run the ISO builder (will prompt for branch selection)"
+    echo "  $0 --version-check             Check version against main branch"
+    echo "  $0 --version-check develop     Check version against develop branch"
+    echo
+    exit 0
+    ;;
+  --*)
+    echo -e "${RED}Unknown option: $1${NC}"
+    echo "Use --help for usage information"
+    exit 1
+    ;;
+esac
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # ROOT PERMISSION CHECK
@@ -276,6 +421,48 @@ if [ "$EUID" -ne 0 ]; then
   echo
   exit 1
 fi
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# BUILD ENVIRONMENT CLEANUP (FIRST RUN ONLY)
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+echo
+echo -e "${YELLOW}[*] Downloading and running build environment cleanup script...${NC}"
+
+# Setup cleanup script download URLs (using same branch as selected earlier)
+CLEANUP_REMOTE_PATH="CleanupBuildEnvironment.sh"
+CLEANUP_API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${CLEANUP_REMOTE_PATH}?ref=${REF}"
+CLEANUP_RAW_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${REF}/${CLEANUP_REMOTE_PATH}"
+
+# Create temporary file for cleanup script
+CLEANUP_SCRIPT=$(mktemp) || { echo -e "${RED}[!] Failed to create temp file for cleanup script.${NC}"; exit 1; }
+
+# Download cleanup script using existing download function
+if download_always "$CLEANUP_API_URL" "$CLEANUP_RAW_URL" "$CLEANUP_SCRIPT" "true"; then
+  echo -e "${GREEN}[+] CleanupBuildEnvironment.sh downloaded and validated successfully.${NC}"
+  echo -e "${YELLOW}[*] Running build environment cleanup...${NC}"
+  
+  # Make script executable and run it
+  chmod +x "$CLEANUP_SCRIPT"
+  
+  # Run the cleanup script and capture its exit status
+  if bash "$CLEANUP_SCRIPT"; then
+    echo -e "${GREEN}[+] Build environment cleanup completed successfully${NC}"
+  else
+    echo -e "${YELLOW}[!] Cleanup script completed with warnings (this is often normal)${NC}"
+    echo -e "${YELLOW}[*] Continuing with build process...${NC}"
+  fi
+  
+  # Give system a moment to settle after cleanup
+  echo -e "${YELLOW}[*] Allowing system to settle after cleanup...${NC}"
+  sleep 3
+else
+  echo -e "${RED}[!] Failed to download or validate CleanupBuildEnvironment.sh from GitHub.${NC}"
+  echo -e "${YELLOW}[*] Continuing without cleanup - this may cause build issues if previous builds left artifacts.${NC}"
+fi
+
+# Clean up temporary file
+rm -f "$CLEANUP_SCRIPT"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # TIMING AND CLEANUP SETUP
@@ -331,23 +518,12 @@ done
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # GitHub repo info for self-update
-GITHUB_OWNER="PostWarTacos"
-GITHUB_REPO="CryptoShred"
 BUILD_REMOTE_PATH="BuildCryptoShred.sh"
-REF="main"
+# REF is set earlier based on user choice
 
 # API and raw URLs
 API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${BUILD_REMOTE_PATH}?ref=${REF}"
 RAW_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${REF}/${BUILD_REMOTE_PATH}"
-
-# Hardened curl options
-CURL_OPTS=( --fail --silent --show-error --location --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 )
-
-# Allow token via environment to avoid rate limits / access private repos
-AUTH_HDR=()
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-  AUTH_HDR=( -H "Authorization: token ${GITHUB_TOKEN}" )
-fi
 
 SCRIPT_PATH="$(resolve_self_path)"
 # Fallback: if resolution failed, use $0 as-is
@@ -357,36 +533,16 @@ fi
 
 echo
 echo -e "${YELLOW}[*] Checking for BuildCryptoShred.sh updates using GitHub API blob SHA...${NC}"
+echo -e "${BLUE}[*] Selected branch: $REF${NC}"
 
 # Use the download and validate function for self-update
-if download_and_validate "$API_URL" "$RAW_URL" "$SCRIPT_PATH" "false" "true"; then
+if download_if_updated "$API_URL" "$RAW_URL" "$SCRIPT_PATH" "false" "true"; then
   # If function returns 0 but file was updated, it will have already exited
   # If we get here, either file is up to date or there was an error that we can continue from
   echo -e "${GREEN}[+] BuildCryptoShred.sh check completed.${NC}"
 else
   echo -e "${YELLOW}[*] Could not update BuildCryptoShred.sh, continuing with current version.${NC}"
 fi
-
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-# INTRODUCTION AND USER CONFIRMATION
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-echo
-echo "================================================== CryptoShred ISO Builder =================================================="
-echo
-echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
-echo "Version 1.9 - 2025-10-29"
-echo
-echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
-echo "The resulting ISO will be written directly to the specified USB device."
-echo "Make sure to change the USB device and script are in place before proceeding."
-echo
-echo -e "${RED}WARNING: This will ERASE ALL DATA on the specified USB device.${NC}"
-echo -e "${RED}IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in.${NC}"
-echo
-echo "============================================================================================================================="
-echo
-read -p "Press Enter to continue..."
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION AND SETUP
@@ -479,8 +635,8 @@ CRYPTOSHRED_RAW_URL="https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_
 LOCAL_CRYPTOSHRED="${LOCAL_CRYPTOSHRED:-$CRYPTOSHRED_SCRIPT}"
 
 echo
-# Use the download and validate function for CryptoShred.sh (workspace mode)
-if ! download_and_validate "$CRYPTOSHRED_API_URL" "$CRYPTOSHRED_RAW_URL" "$LOCAL_CRYPTOSHRED" "true"; then
+# Use the download always function for CryptoShred.sh (workspace mode)
+if ! download_always "$CRYPTOSHRED_API_URL" "$CRYPTOSHRED_RAW_URL" "$LOCAL_CRYPTOSHRED" "true"; then
   echo -e "${RED}[!] Failed to download/validate CryptoShred.sh. Checking for local copy...${NC}"
   
   # Check if we have a local copy we can use
@@ -534,14 +690,14 @@ fi
 
 echo
 echo -e "${YELLOW}[*] Fetching latest Debian ISO link...${NC}"
-ISO_URL=$(curl -s "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | 
+ISO_URL=$(curl --fail --silent --show-error --location --connect-timeout 10 --max-time 30 --retry 2 "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | 
   grep -oP 'href="debian-live-[0-9.]+-amd64-standard\.iso"' | head -n1 | cut -d'"' -f2)
 
 # Check if ISO_URL was found
 if [ -z "$ISO_URL" ]; then
   echo -e "${RED}[!] Error: Could not find Debian ISO URL. Check internet connection or Debian mirrors.${NC}"
   echo "[DEBUG] Trying to list available ISOs..."
-  curl -s "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | grep -o 'debian-live-[^"]*\.iso' | head -5
+  curl --fail --silent --show-error --location --connect-timeout 10 --max-time 30 "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" | grep -o 'debian-live-[^"]*\.iso' | head -5
   exit 1
 fi
 
@@ -549,8 +705,8 @@ echo -e "${YELLOW}[*] Found ISO: $ISO_URL${NC}"
 echo -e "${YELLOW}[*] Downloading $ISO_URL...${NC}"
 echo -e "${YELLOW}[*] This may take several minutes depending on your connection...${NC}"
 
-# Use wget with better progress display and error handling
-if ! wget --progress=bar:force "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/$ISO_URL" -O debian.iso; then
+# Use wget with proper progress bar for large file downloads
+if ! wget --progress=bar:force:noscroll --show-progress --timeout=30 --tries=3 --retry-connrefused --waitretry=5 "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/$ISO_URL" -O debian.iso; then
   echo -e "${RED}[!] Error: Failed to download Debian ISO${NC}"
   echo -e "${RED}[!] Please check your internet connection and try again${NC}"
   exit 1

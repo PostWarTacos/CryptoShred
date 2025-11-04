@@ -25,24 +25,6 @@ NC='\033[0m' # No Color
 # Ensure TERM is set for proper terminal handling
 export TERM="${TERM:-linux}"
 
-# Debugging output
-# Uncomment the following lines to enable persistent logging
-# This will create a log file in /var/log/cryptoshred with timestamped entries
-# This is useful for debugging and inspecting runs after the system has booted
-
-# Persistent logging so we can inspect live runs after first boot
-# LOGDIR="/var/log/cryptoshred"
-# mkdir -p "$LOGDIR"
-# LOGFILE="$LOGDIR/cryptoshred-$(date +%Y%m%d-%H%M%S).log"
-# Redirect stdout/stderr to logfile while still echoing to console when possible
-# exec > >(tee -a "$LOGFILE") 2>&1
-
-# echo
-# echo "[LOGFILE] $LOGFILE"
-# echo "[INFO] Invoked by: $(whoami)"
-# echo "[INFO] Shell: $SHELL"
-# echo
-
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -58,7 +40,7 @@ prompt_enter() {
 prompt_read() {
   local prompt="${1:-}"
   local input=""
-  printf "%s" "$prompt" >&2
+  printf "%b" "$prompt" >&2
   read -r input 2>/dev/null || input=""
   printf '%s' "$input"
 }
@@ -70,7 +52,7 @@ prompt_read() {
 echo "================================================= CryptoShred ===================================================="
 echo
 echo -e "${GREEN}CryptoShred - Securely encrypt and destroy key${NC}"
-echo "Version 1.6 - 2025-10-29"
+echo "Version 1.8 - 2025-11-04"
 echo
 echo "This script will encrypt an entire local drive with a random key, making all data on it permanently inaccessible."
 echo "It supports both Opal hardware encryption (if available) and software LUKS2 encryption as a fallback."
@@ -100,11 +82,6 @@ else
     BOOT_DISK="${BASH_REMATCH[1]}"
   fi
 fi
-
-# Debugging output
-# echo "DEBUG: ROOT_PART='$ROOT_PART'"
-# echo "DEBUG: LIVE_MEDIUM='$LIVE_MEDIUM'"
-# echo "DEBUG: BOOT_DISK='$BOOT_DISK'"
 
 prompt_enter "Press Enter to continue..."
 
@@ -204,7 +181,7 @@ echo -e "${YELLOW}[*] Preparing device /dev/$DEV for encryption...${NC}"
 
 # Check Opal first
 echo
-echo  "${YELLOW}[*] Checking for Opal hardware encryption support...${NC}"
+echo -e "${YELLOW}[*] Checking for Opal hardware encryption support...${NC}"
 # Query sedutil and inspect output for a locked state. Capture output so we can both detect support
 # and look for "Locked = Y". Be tolerant of whitespace/case.
 SEDOUT=$(sedutil-cli --query /dev/$DEV 2>/dev/null || true)
