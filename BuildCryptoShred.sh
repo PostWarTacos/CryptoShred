@@ -40,7 +40,7 @@ echo
 echo "================================================== CryptoShred ISO Builder =================================================="
 echo
 echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
-echo "Version 2.1 - 2025-11-04"
+echo "Version 2.1.1 - 2025-11-04"
 echo
 echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
 echo "The resulting ISO will be written directly to the specified USB device."
@@ -765,8 +765,11 @@ RestartSec=5
 ExecStartPre=/bin/sleep 10
 # Stop getty on tty1 to free it up  
 ExecStartPre=-/bin/systemctl stop getty@tty1.service
+# Set large console font before starting
+ExecStartPre=-/bin/setfont /usr/share/consolefonts/Lat2-Terminus32x16.psf.gz
+ExecStartPre=-/usr/bin/setupcon
 # Run script in a loop - restart after each completion to allow multiple disk shredding
-ExecStart=/bin/bash -c 'export SYSTEMD_EXEC_PID=$$; export NO_CLEAN_ENV=1; export TERM=linux; while true; do echo; echo "[*] CryptoShred ready for next disk..."; echo; if ! /usr/bin/CryptoShred.sh </dev/tty1 >/dev/tty1 2>&1; then echo "=== CRYPTOSHRED FAILED - Check USB and reboot ===" > /dev/tty1; echo "System will restart in 30 seconds. CryptoShred will reinitialize shortly after..." > /dev/tty1; sleep 30; break; fi; echo; echo "[+] Drive shredding completed. Insert another drive to continue or reboot to exit."; echo; sleep 10; done'
+ExecStart=/bin/bash -c 'export SYSTEMD_EXEC_PID=$$; export NO_CLEAN_ENV=1; export TERM=linux; setfont /usr/share/consolefonts/Lat2-Terminus32x16.psf.gz 2>/dev/null || true; while true; do echo; echo "[*] CryptoShred ready for next disk..."; echo; if ! /usr/bin/CryptoShred.sh </dev/tty1 >/dev/tty1 2>&1; then echo "=== CRYPTOSHRED FAILED - Check USB and reboot ===" > /dev/tty1; echo "System will restart in 30 seconds. CryptoShred will reinitialize shortly after..." > /dev/tty1; sleep 30; break; fi; echo; echo "[+] Drive shredding completed. Insert another drive to continue or reboot to exit."; echo; sleep 10; done'
 # If service fails completely, still try to restart getty
 ExecStopPost=-/bin/systemctl start getty@tty1.service
 TimeoutStartSec=25m
@@ -816,7 +819,28 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get update
 apt-get -y full-upgrade
-apt-get -y install wget ca-certificates cryptsetup
+apt-get -y install wget ca-certificates cryptsetup console-setup kbd
+
+echo "[*] Configuring larger console font..."
+# Install console fonts
+apt-get -y install console-setup-linux console-data
+
+# Configure console for larger font
+cat > /etc/default/console-setup <<EOF
+ACTIVE_CONSOLES="/dev/tty[1-6]"
+CHARMAP="UTF-8"
+CODESET="guess"
+FONTFACE="Terminus"
+FONTSIZE="16x32"
+VIDEOMODE=""
+EOF
+
+# Set up console font at boot
+echo 'setupcon' >> /etc/rc.local
+
+# Also set font immediately for current session
+echo 'setfont /usr/share/consolefonts/Lat2-Terminus32x16.psf.gz' >> /etc/profile
+echo 'setfont /usr/share/consolefonts/Lat2-Terminus32x16.psf.gz' >> /etc/bash.bashrc
 
 echo "[*] Installing sedutil-cli for SED drive management..."
 # Download sedutil and extract archive
@@ -895,7 +919,12 @@ echo
 echo -e "${YELLOW}[*] Modifying GRUB config...${NC}"
 GRUB_CFG="iso/boot/grub/grub.cfg"
 if [ -f "$GRUB_CFG" ]; then
-  sed -i '1i set default=0\nset timeout=0' "$GRUB_CFG"
+  # Set default boot, timeout, and larger console font
+  sed -i '1i set default=0\nset timeout=0\nloadfont /boot/grub/fonts/unicode.pf2\nset gfxmode=1024x768\nset gfxpayload=keep\nterminal_output gfxterm' "$GRUB_CFG"
+  
+  # Add kernel parameters for larger console font
+  # Find the linux command lines and add console font parameters
+  sed -i 's/\(linux.*\)/\1 fbcon=font:TER16x32 consoleblank=0/' "$GRUB_CFG"
 else
   echo -e "${RED}[!] GRUB config not found at $GRUB_CFG${NC}"
   read -p "Press Enter to continue..."
