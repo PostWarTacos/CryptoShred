@@ -112,7 +112,7 @@ while true; do
       echo -e "${CYAN}  /dev/$disk  $size  $model${NC}"
   done
   echo
-  echo "Devices are listed above in ${CYAN}cyan${NC}. Enter the value after /dev/ exactly."
+  echo -e "Devices are listed above in ${CYAN}cyan${NC}. Enter the value after /dev/ exactly."
   DEV=$(prompt_read "Enter the device to encrypt (e.g., sdb, nvme0n1): ")
 
   # Validate input
