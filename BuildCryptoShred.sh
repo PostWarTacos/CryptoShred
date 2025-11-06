@@ -33,64 +33,6 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-# INTRODUCTION AND USER CONFIRMATION
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-echo
-echo "================================================== CryptoShred ISO Builder =================================================="
-echo
-echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
-echo "Version 2.1.2 - 2025-11-04"
-echo
-echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
-echo "The resulting ISO will be written directly to the specified USB device."
-echo "Make sure to change the USB device and script are in place before proceeding."
-echo
-echo -e "${RED}WARNING: This will ERASE ALL DATA on the specified USB device.${NC}"
-echo -e "${RED}IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in.${NC}"
-echo
-echo "============================================================================================================================="
-echo
-
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-# BRANCH SELECTION
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-echo -e "${YELLOW}Select which branch to use for CryptoShred scripts:${NC}"
-echo "  1) Main branch (stable, default)"
-echo "  2) Develop branch (latest features)"
-echo "  3) Custom branch"
-echo
-BRANCH_CHOICE=$(prompt_read "Select option (1-3). If you're unsure, select option 1 [default: 1]: ")
-
-case "${BRANCH_CHOICE:-1}" in
-  1|"")
-    REF="main"
-    echo -e "${GREEN}[+] Using main branch (stable)${NC}"
-    ;;
-  2)
-    REF="develop" 
-    echo -e "${GREEN}[+] Using develop branch (latest features)${NC}"
-    ;;
-  3)
-    CUSTOM_BRANCH=$(prompt_read "Enter custom branch name: ")
-    if [[ -n "$CUSTOM_BRANCH" ]]; then
-      REF="$CUSTOM_BRANCH"
-      echo -e "${GREEN}[+] Using custom branch: $REF${NC}"
-    else
-      echo -e "${YELLOW}[!] No branch name provided, defaulting to main${NC}"
-      REF="main"
-    fi
-    ;;
-  *)
-    echo -e "${YELLOW}[!] Invalid option, defaulting to main branch${NC}"
-    REF="main"
-    ;;
-esac
-
-prompt_enter "Press Enter to continue..."
-
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # FUNCTION DEFINITIONS
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -333,6 +275,64 @@ resolve_self_path() {
   # Fallback: construct from pwd + basename
   printf '%s' "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null || pwd)/$(basename "${BASH_SOURCE[0]:-$0}")"
 }
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# INTRODUCTION AND USER CONFIRMATION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+echo
+echo "================================================== CryptoShred ISO Builder =================================================="
+echo
+echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
+echo "Version 2.1.2 - 2025-11-04"
+echo
+echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
+echo "The resulting ISO will be written directly to the specified USB device."
+echo "Make sure to change the USB device and script are in place before proceeding."
+echo
+echo -e "${RED}WARNING: This will ERASE ALL DATA on the specified USB device.${NC}"
+echo -e "${RED}IMPORTANT!!! Make sure your target USB device (device to have Debian/CryptoShred ISO installed) is plugged in.${NC}"
+echo
+echo "============================================================================================================================="
+echo
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# BRANCH SELECTION
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+echo -e "${YELLOW}Select which branch to use for CryptoShred scripts:${NC}"
+echo "  1) Main branch (stable, default)"
+echo "  2) Develop branch (latest features)"
+echo "  3) Custom branch"
+echo
+BRANCH_CHOICE=$(prompt_read "Select option (1-3). If you're unsure, select option 1 [default: 1]: ")
+
+case "${BRANCH_CHOICE:-1}" in
+  1|"")
+    REF="main"
+    echo -e "${GREEN}[+] Using main branch (stable)${NC}"
+    ;;
+  2)
+    REF="develop" 
+    echo -e "${GREEN}[+] Using develop branch (latest features)${NC}"
+    ;;
+  3)
+    CUSTOM_BRANCH=$(prompt_read "Enter custom branch name: ")
+    if [[ -n "$CUSTOM_BRANCH" ]]; then
+      REF="$CUSTOM_BRANCH"
+      echo -e "${GREEN}[+] Using custom branch: $REF${NC}"
+    else
+      echo -e "${YELLOW}[!] No branch name provided, defaulting to main${NC}"
+      REF="main"
+    fi
+    ;;
+  *)
+    echo -e "${YELLOW}[!] Invalid option, defaulting to main branch${NC}"
+    REF="main"
+    ;;
+esac
+
+prompt_enter "Press Enter to continue..."
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # SHELL AND ENVIRONMENT DETECTION
