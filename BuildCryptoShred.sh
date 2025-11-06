@@ -16,7 +16,6 @@ clear
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
@@ -366,7 +365,7 @@ fi
 case "${1:-}" in
   --version-check|--check-version)
     branch="${2:-main}"
-    echo -e "${BLUE}[*] Checking BuildCryptoShred.sh against $branch branch using hash comparison...${NC}"
+    echo -e "${CYAN}[*] Checking BuildCryptoShred.sh against $branch branch using hash comparison...${NC}"
     
     # Use existing hash-based checking functions
     build_api_url="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/BuildCryptoShred.sh?ref=${branch}"
@@ -390,8 +389,8 @@ case "${1:-}" in
 
     # Compare hashes
     if [ -n "$remote_sha" ] && [ -n "$local_blob" ]; then
-      echo -e "${BLUE}[*] Local hash:  $local_blob${NC}"
-      echo -e "${BLUE}[*] Remote hash: $remote_sha${NC}"
+      echo -e "${CYAN}[*] Local hash:  $local_blob${NC}"
+      echo -e "${CYAN}[*] Remote hash: $remote_sha${NC}"
       
       if [ "$remote_sha" = "$local_blob" ]; then
         echo -e "${GREEN}[✓] Hashes match - BuildCryptoShred.sh is up to date with $branch branch${NC}"
@@ -550,7 +549,7 @@ fi
 
 echo
 echo -e "${YELLOW}[*] Checking for BuildCryptoShred.sh updates using GitHub API blob SHA...${NC}"
-echo -e "${BLUE}[*] Selected branch: $REF${NC}"
+echo -e "${CYAN}[*] Selected branch: $REF${NC}"
 
 # Use the download and validate function for self-update
 if download_if_updated "$API_URL" "$RAW_URL" "$SCRIPT_PATH" "false" "true"; then
@@ -596,7 +595,7 @@ while true; do
   echo
   # Prompt for device to write ISO to
   echo -e "Devices are listed above in ${CYAN}cyan${NC}. Enter the value after /dev/ exactly."
-  USBDEV=$(prompt_read "Enter the device to write ISO to (e.g., sdb, nvme0n1): ")
+  USBDEV=$(prompt_read "Enter the device to write ISO to (e.g. sda, sdb, nvme0n1): ")
   # Check if entered device is in the lsblk output and is a disk
   if lsblk -d -o NAME,TYPE | grep -E "^$USBDEV\s+disk" > /dev/null; then
     # Prevent wiping the boot device
