@@ -40,7 +40,7 @@ echo
 echo "================================================== CryptoShred ISO Builder =================================================="
 echo
 echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
-echo "Version 2.1.1 - 2025-11-04"
+echo "Version 2.1.2 - 2025-11-04"
 echo
 echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
 echo "The resulting ISO will be written directly to the specified USB device."
@@ -61,7 +61,7 @@ echo "  1) Main branch (stable, default)"
 echo "  2) Develop branch (latest features)"
 echo "  3) Custom branch"
 echo
-read -p "Select option (1-3) [default: 1]: " BRANCH_CHOICE
+read -p "Select option (1-3). If you're unsure, select option 1 [default: 1]: " BRANCH_CHOICE
 
 case "${BRANCH_CHOICE:-1}" in
   1|"")
@@ -572,7 +572,8 @@ while true; do
   lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi "$BOOTDEV"
   echo
   # Prompt for device to write ISO to
-  read -p "Enter the device to write ISO to (e.g., sdb, nvme0n1): " USBDEV
+  echo -e "Devices are listed above. Enter the value after /dev/ exactly."
+  USBDEV=$(prompt_read "Enter the device to encrypt (e.g., sda, sdb, nvme0n1): ")
   # Check if entered device is in the lsblk output and is a disk
   if lsblk -d -o NAME,TYPE | grep -E "^$USBDEV\s+disk" > /dev/null; then
     # Prevent wiping the boot device
