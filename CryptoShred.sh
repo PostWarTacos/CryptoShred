@@ -109,10 +109,12 @@ while true; do
   for disk in $AVAILABLE_DISKS; do
       size=$(lsblk -ndo SIZE /dev/$disk)
       model=$(lsblk -ndo MODEL /dev/$disk)
-      echo "  /dev/$disk  $size  $model"
+      echo -e "${BLUE}  /dev/$disk  $size  $model${NC}"
   done
   echo
   DEV=$(prompt_read "Enter the device to encrypt (e.g., sdb, nvme0n1): ")
+  echo "Devices are listed above in blue. Enter the value after /dev/ exactly."
+  # Validate input
   if echo "$AVAILABLE_DISKS" | grep -qx "$DEV"; then
     break
   fi
