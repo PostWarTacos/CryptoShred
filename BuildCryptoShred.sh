@@ -40,7 +40,7 @@ echo
 echo "================================================== CryptoShred ISO Builder =================================================="
 echo
 echo -e "${GREEN}CryptoShred ISO Builder - Create a bootable Debian-based ISO with CryptoShred pre-installed${NC}"
-echo "Version 2.1 - 2025-11-04"
+echo "Version 2.1.1 - 2025-11-04"
 echo
 echo "This script will create a bootable Debian-based ISO with CryptoShred.sh pre-installed and configured to run on first boot."
 echo "The resulting ISO will be written directly to the specified USB device."
