@@ -17,6 +17,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # GitHub repository configuration
@@ -61,7 +62,7 @@ echo "  1) Main branch (stable, default)"
 echo "  2) Develop branch (latest features)"
 echo "  3) Custom branch"
 echo
-read -p "Select option (1-3). If you're unsure, select option 1 [default: 1]: " BRANCH_CHOICE
+BRANCH_CHOICE=$(prompt_read "Select option (1-3). If you're unsure, select option 1 [default: 1]: ")
 
 case "${BRANCH_CHOICE:-1}" in
   1|"")
@@ -73,7 +74,7 @@ case "${BRANCH_CHOICE:-1}" in
     echo -e "${GREEN}[+] Using develop branch (latest features)${NC}"
     ;;
   3)
-    read -p "Enter custom branch name: " CUSTOM_BRANCH
+    CUSTOM_BRANCH=$(prompt_read "Enter custom branch name: ")
     if [[ -n "$CUSTOM_BRANCH" ]]; then
       REF="$CUSTOM_BRANCH"
       echo -e "${GREEN}[+] Using custom branch: $REF${NC}"
@@ -88,7 +89,7 @@ case "${BRANCH_CHOICE:-1}" in
     ;;
 esac
 
-read -p "Press Enter to continue..."
+prompt_enter "Press Enter to continue..."
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 # FUNCTION DEFINITIONS
@@ -116,6 +117,22 @@ safe_install_file() {
   return 0
 }
 
+# Prompt and wait for Enter. USB/live environment friendly - no /dev/tty dependency.
+prompt_enter() {
+  local prompt="${1:-Press Enter to continue...}"
+  printf "%s" "$prompt" >&2
+  read -r _ 2>/dev/null || true
+}
+
+# Prompt for input and print the response. USB/live environment friendly - no /dev/tty dependency.
+prompt_read() {
+  local prompt="${1:-}"
+  local input=""
+  printf "%b" "$prompt" >&2
+  read -r input 2>/dev/null || input=""
+  printf '%s' "$input"
+}
+
 # Helper function to prompt user for retry or exit
 # Usage: prompt_retry_or_exit "error_message" "cause_description"
 # Returns: never returns - either continues loop or exits script
@@ -130,7 +147,7 @@ prompt_retry_or_exit() {
   echo "  1) Retry download"
   echo "  2) Exit script"
   echo
-  read -p "Enter choice (1-2): " RETRY_CHOICE
+  RETRY_CHOICE=$(prompt_read "Enter choice (1-2): ")
   case "${RETRY_CHOICE:-2}" in
     1)
       echo -e "${YELLOW}[*] Retrying download...${NC}"
@@ -507,7 +524,7 @@ for cmd in cryptsetup 7z unsquashfs xorriso wget curl; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
       echo
       echo -e "${RED}[!] Failed to install $cmd. Please install it manually.${NC}"
-      read -p "Press Enter to continue..."
+      prompt_enter "Press Enter to continue..."
       exit 1
     fi
   fi
@@ -569,18 +586,24 @@ while true; do
   echo -e "${RED}Make sure to choose the correct device as all data on it will be erased!${NC}"
   echo
   echo -e "${YELLOW}Available local drives:${NC}"
-  lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi "$BOOTDEV"
+  # Get available disks and format them in cyan like CryptoShred.sh
+  AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOTDEV$")
+  for disk in $AVAILABLE_DISKS; do
+    size=$(lsblk -ndo SIZE /dev/$disk)
+    model=$(lsblk -ndo MODEL /dev/$disk)
+    echo -e "${CYAN}  /dev/$disk  $size  $model${NC}"
+  done
   echo
   # Prompt for device to write ISO to
-  echo -e "Devices are listed above. Enter the value after /dev/ exactly."
-  USBDEV=$(prompt_read "Enter the device to encrypt (e.g., sda, sdb, nvme0n1): ")
+  echo -e "Devices are listed above in ${CYAN}cyan${NC}. Enter the value after /dev/ exactly."
+  USBDEV=$(prompt_read "Enter the device to write ISO to (e.g., sdb, nvme0n1): ")
   # Check if entered device is in the lsblk output and is a disk
   if lsblk -d -o NAME,TYPE | grep -E "^$USBDEV\s+disk" > /dev/null; then
     # Prevent wiping the boot device
     if [[ "$USBDEV" == "$BOOTDEV" ]]; then
       echo
       echo -e "${RED}ERROR: /dev/$USBDEV appears to be the boot device. Please choose another device.${NC}"
-      read -p "Press Enter to continue..."
+      prompt_enter "Press Enter to continue..."
       clear
       continue
     fi
@@ -588,7 +611,7 @@ while true; do
   fi
   echo
   echo -e "${RED}Device /dev/$USBDEV is not a valid local disk from the list above. Please try again.${NC}"
-  read -p "Press Enter to continue..."
+  prompt_enter "Press Enter to continue..."
   clear
 done
 
@@ -928,7 +951,7 @@ if [ -f "$GRUB_CFG" ]; then
   sed -i 's/\(linux.*\)/\1 fbcon=font:TER16x32 consoleblank=0/' "$GRUB_CFG"
 else
   echo -e "${RED}[!] GRUB config not found at $GRUB_CFG${NC}"
-  read -p "Press Enter to continue..."
+  prompt_enter "Press Enter to continue..."
   exit 1
 fi
 
@@ -1035,7 +1058,7 @@ echo -e "${GREEN}[+] Script was started at: ${YELLOW}$(date -d "@$START_TIME" "+
 while true; do
   echo
   printf "%b" "${YELLOW}Create another USB? (y/n): ${NC}"
-  read -r CREATE_ANOTHER
+  CREATE_ANOTHER=$(prompt_read "")
   
   case "$CREATE_ANOTHER" in
     [Yy]|[Yy][Ee][Ss])
@@ -1046,10 +1069,17 @@ while true; do
         echo -e "${RED}Make sure to choose the correct device as all data on it will be erased!${NC}"
         echo
         echo -e "${YELLOW}Available local drives:${NC}"
-        lsblk -d -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT | grep -E 'disk' | grep -vi $BOOTDEV
+        # Get available disks and format them in cyan like CryptoShred.sh
+        AVAILABLE_DISKS=$(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^$BOOTDEV$")
+        for disk in $AVAILABLE_DISKS; do
+          size=$(lsblk -ndo SIZE /dev/$disk)
+          model=$(lsblk -ndo MODEL /dev/$disk)
+          echo -e "${CYAN}  /dev/$disk  $size  $model${NC}"
+        done
         echo
         
-        read -p "Enter the device to write ISO to (e.g., sdb, nvme0n1): " NEW_USBDEV
+        echo -e "Devices are listed above in ${CYAN}cyan${NC}. Enter the value after /dev/ exactly."
+        NEW_USBDEV=$(prompt_read "Enter the device to write ISO to (e.g., sdb, nvme0n1): ")
         
         # Check if entered device is in the lsblk output and is a disk
         if lsblk -d -o NAME,TYPE | grep -E "^$NEW_USBDEV\\s+disk" > /dev/null; then
@@ -1057,14 +1087,14 @@ while true; do
           if [[ "$NEW_USBDEV" == "$BOOTDEV" ]]; then
             echo
             echo -e "${RED}ERROR: /dev/$NEW_USBDEV appears to be the boot device. Please choose another device.${NC}"
-            read -p "Press Enter to continue..."
+            prompt_enter "Press Enter to continue..."
             continue
           fi
           break
         fi
         echo
         echo -e "${RED}Device /dev/$NEW_USBDEV is not a valid local disk from the list above. Please try again.${NC}"
-        read -p "Press Enter to continue..."
+        prompt_enter "Press Enter to continue..."
       done
       
       # Write ISO to new USB device
