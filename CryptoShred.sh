@@ -19,7 +19,7 @@ clear
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Ensure TERM is set for proper terminal handling
@@ -52,7 +52,7 @@ prompt_read() {
 echo "================================================= CryptoShred ===================================================="
 echo
 echo -e "${GREEN}CryptoShred - Securely encrypt and destroy key${NC}"
-echo "Version 1.8.1 - 2025-11-04"
+echo "Version 1.8.2 - 2025-11-04"
 echo
 echo "This script will encrypt an entire local drive with a random key, making all data on it permanently inaccessible."
 echo "It supports both Opal hardware encryption (if available) and software LUKS2 encryption as a fallback."
@@ -109,11 +109,12 @@ while true; do
   for disk in $AVAILABLE_DISKS; do
       size=$(lsblk -ndo SIZE /dev/$disk)
       model=$(lsblk -ndo MODEL /dev/$disk)
-      echo -e "${BLUE}  /dev/$disk  $size  $model${NC}"
+      echo -e "${CYAN}  /dev/$disk  $size  $model${NC}"
   done
   echo
+  echo -e "Devices are listed above in ${CYAN}cyan${NC}. Enter the value after /dev/ exactly."
   DEV=$(prompt_read "Enter the device to encrypt (e.g., sdb, nvme0n1): ")
-  echo "Devices are listed above in blue. Enter the value after /dev/ exactly."
+
   # Validate input
   if echo "$AVAILABLE_DISKS" | grep -qx "$DEV"; then
     break
